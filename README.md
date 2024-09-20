@@ -1,2 +1,2 @@
 # avolution
-java  sever
+java  sever main

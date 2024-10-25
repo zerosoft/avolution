@@ -1,5 +1,7 @@
 package com.avolution.net.tcp;
 
+import com.avolution.actor.RemoteActor;
+import com.avolution.actor.Message;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -13,10 +15,12 @@ public class TCPClientService {
 
     private final String host;
     private final int port;
+    private final RemoteActor remoteActor;
 
     public TCPClientService(String host, int port) {
         this.host = host;
         this.port = port;
+        this.remoteActor = new RemoteActor(host, port);
     }
 
     public void start() throws InterruptedException {
@@ -55,6 +59,9 @@ public class TCPClientService {
         TCPPacket packet = new TCPPacket(1, 0, 1001, content.getBytes());
         // 发送给服务器
         f.channel().writeAndFlush(packet);
+
+        // Use RemoteActor to send a message
+        remoteActor.sendMessage(remoteActor, new Message(content));
     }
 
     public static void main(String[] args) throws InterruptedException {

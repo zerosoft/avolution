@@ -9,13 +9,17 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import com.avolution.actor.Supervisor;
+import com.avolution.actor.BasicActor;
 
 public class TCPNettyService {
 
     private final int port;
+    private final Supervisor supervisor;
 
     public TCPNettyService(int port) {
         this.port = port;
+        this.supervisor = new Supervisor(Supervisor.SupervisionStrategy.RESTART);
     }
 
     public void start() throws InterruptedException {
@@ -32,7 +36,9 @@ public class TCPNettyService {
                         public void initChannel(SocketChannel ch) {
                             ch.pipeline().addLast(new TCPPacketDecoder());  // 自定义解码器
                             ch.pipeline().addLast(new TCPPacketEncoder());  // 自定义编码器
-                            ch.pipeline().addLast(new SimpleServerHandler());  // 业务处理器
+                            SimpleServerHandler handler = new SimpleServerHandler();
+                            supervisor.addActor(handler.getActor());
+                            ch.pipeline().addLast(handler);  // 业务处理器
                         }
                     });
 

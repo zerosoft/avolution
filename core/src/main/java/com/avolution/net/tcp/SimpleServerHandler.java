@@ -1,9 +1,17 @@
 package com.avolution.net.tcp;
 
+import com.avolution.actor.BasicActor;
+import com.avolution.actor.Message;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
 public class SimpleServerHandler extends SimpleChannelInboundHandler<TCPPacket> {
+
+    private final BasicActor actor;
+
+    public SimpleServerHandler() {
+        this.actor = new BasicActor();
+    }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, TCPPacket packet) {
@@ -12,6 +20,9 @@ public class SimpleServerHandler extends SimpleChannelInboundHandler<TCPPacket> 
         System.out.println("Encryption Type: " + packet.getEncryptionType());
         System.out.println("Protocol ID: " + packet.getProtocolId());
         System.out.println("Content: " + new String(packet.getContent()));
+
+        // Use BasicActor to handle the packet
+        actor.receiveMessage(new Message(new String(packet.getContent())));
 
         // 回复一个新TCPPacket作为响应
         String responseContent = "Response to Protocol ID " + packet.getProtocolId();

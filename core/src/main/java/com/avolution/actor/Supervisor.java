@@ -36,16 +36,31 @@ public class Supervisor {
     private void restartActor(Actor actor) {
         logger.info("Restarting actor: " + actor);
         // Implement restart logic
+        if (actor instanceof BasicActor) {
+            ((BasicActor) actor).restart();
+        } else if (actor instanceof RemoteActor) {
+            ((RemoteActor) actor).restart();
+        }
     }
 
     private void stopActor(Actor actor) {
         logger.info("Stopping actor: " + actor);
         // Implement stop logic
+        if (actor instanceof BasicActor) {
+            ((BasicActor) actor).stop();
+        } else if (actor instanceof RemoteActor) {
+            ((RemoteActor) actor).stop();
+        }
     }
 
     private void resumeActor(Actor actor) {
         logger.info("Resuming actor: " + actor);
         // Implement resume logic
+        if (actor instanceof BasicActor) {
+            ((BasicActor) actor).resume();
+        } else if (actor instanceof RemoteActor) {
+            ((RemoteActor) actor).resume();
+        }
     }
 
     public enum SupervisionStrategy {

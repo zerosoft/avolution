@@ -30,10 +30,31 @@ public class BasicActor implements Actor {
             while (true) {
                 Message message = messageQueue.take();
                 // Process the message
-                System.out.println("Processing message: " + message.getContent());
+                handleMessage(message);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private void handleMessage(Message message) {
+        // Custom message handling logic
+        System.out.println("Processing message: " + message.getContent());
+        // Add more custom handling logic here
+    }
+
+    public void restart() {
+        // Implement restart logic
+        System.out.println("Restarting actor");
+    }
+
+    public void stop() {
+        // Implement stop logic
+        System.out.println("Stopping actor");
+    }
+
+    public void resume() {
+        // Implement resume logic
+        System.out.println("Resuming actor");
     }
 }

@@ -2,15 +2,19 @@ package com.avolution.net.tcp;
 
 import com.avolution.actor.BasicActor;
 import com.avolution.actor.Message;
+import com.avolution.actor.Supervisor;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
 public class SimpleServerHandler extends SimpleChannelInboundHandler<TCPPacket> {
 
     private final BasicActor actor;
+    private final Supervisor supervisor;
 
-    public SimpleServerHandler() {
+    public SimpleServerHandler(Supervisor supervisor) {
         this.actor = new BasicActor();
+        this.supervisor = supervisor;
+        this.supervisor.addActor(actor);
     }
 
     @Override

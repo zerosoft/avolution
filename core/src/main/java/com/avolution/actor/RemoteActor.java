@@ -10,21 +10,17 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class RemoteActor implements Actor {
+public class RemoteActor extends AbstractActor {
     private final String host;
     private final int port;
-    private final BlockingQueue<Message> messageQueue;
-    private final ExecutorService executorService;
     private Socket socket;
     private ObjectOutputStream out;
     private ObjectInputStream in;
 
     public RemoteActor(String host, int port) {
+        super();
         this.host = host;
         this.port = port;
-        this.messageQueue = new LinkedBlockingQueue<>();
-        this.executorService = Executors.newSingleThreadExecutor();
-        this.executorService.submit(this::processMessages);
         connect();
     }
 
@@ -53,7 +49,7 @@ public class RemoteActor implements Actor {
         try {
             while (true) {
                 Message message = (Message) in.readObject();
-                messageQueue.offer(message);
+                receiveMessage(message);
             }
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
@@ -62,8 +58,9 @@ public class RemoteActor implements Actor {
     }
 
     @Override
-    public void receiveMessage(Message message) {
-        messageQueue.offer(message);
+    protected void handleMessage(Message message) {
+        // Process the message
+        System.out.println("Processing message: " + message.getContent());
     }
 
     @Override
@@ -74,18 +71,6 @@ public class RemoteActor implements Actor {
         } catch (IOException e) {
             e.printStackTrace();
             retryConnection();
-        }
-    }
-
-    private void processMessages() {
-        try {
-            while (true) {
-                Message message = messageQueue.take();
-                // Process the message
-                System.out.println("Processing message: " + message.getContent());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 }

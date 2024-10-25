@@ -6,7 +6,7 @@ import java.util.logging.Logger;
 
 public class Supervisor {
     private static final Logger logger = Logger.getLogger(Supervisor.class.getName());
-    private final List<Actor> actors;
+    private final List<AbstractActor> actors;
     private final SupervisionStrategy strategy;
 
     public Supervisor(SupervisionStrategy strategy) {
@@ -14,11 +14,11 @@ public class Supervisor {
         this.strategy = strategy;
     }
 
-    public void addActor(Actor actor) {
+    public void addActor(AbstractActor actor) {
         actors.add(actor);
     }
 
-    public void handleFailure(Actor actor, Throwable cause) {
+    public void handleFailure(AbstractActor actor, Throwable cause) {
         logger.severe("Actor failed: " + actor + ", cause: " + cause.getMessage());
         switch (strategy) {
             case RESTART:
@@ -33,34 +33,19 @@ public class Supervisor {
         }
     }
 
-    private void restartActor(Actor actor) {
+    private void restartActor(AbstractActor actor) {
         logger.info("Restarting actor: " + actor);
-        // Implement restart logic
-        if (actor instanceof BasicActor) {
-            ((BasicActor) actor).restart();
-        } else if (actor instanceof RemoteActor) {
-            ((RemoteActor) actor).restart();
-        }
+        actor.restart();
     }
 
-    private void stopActor(Actor actor) {
+    private void stopActor(AbstractActor actor) {
         logger.info("Stopping actor: " + actor);
-        // Implement stop logic
-        if (actor instanceof BasicActor) {
-            ((BasicActor) actor).stop();
-        } else if (actor instanceof RemoteActor) {
-            ((RemoteActor) actor).stop();
-        }
+        actor.stop();
     }
 
-    private void resumeActor(Actor actor) {
+    private void resumeActor(AbstractActor actor) {
         logger.info("Resuming actor: " + actor);
-        // Implement resume logic
-        if (actor instanceof BasicActor) {
-            ((BasicActor) actor).resume();
-        } else if (actor instanceof RemoteActor) {
-            ((RemoteActor) actor).resume();
-        }
+        actor.resume();
     }
 
     public enum SupervisionStrategy {

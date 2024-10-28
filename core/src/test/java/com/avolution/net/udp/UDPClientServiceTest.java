@@ -1,5 +1,6 @@
 package com.avolution.net.udp;
 
+import com.avolution.net.MessagePacket;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -59,5 +60,13 @@ class UDPClientServiceTest {
     @Test
     void testAsynchronousIO() {
         // Add test logic to verify asynchronous I/O operations
+    }
+
+    @Test
+    void testMessagePacketFunctionality() {
+        byte[] content = "Test Message".getBytes();
+        MessagePacket packet = new MessagePacket(content.length, content);
+        assertEquals(content.length, packet.getLength());
+        assertArrayEquals(content, packet.getContent());
     }
 }

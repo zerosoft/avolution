@@ -1,6 +1,6 @@
 package com.avolution.net.tcp.codec;
 
-import com.avolution.net.tcp.TCPPacket;
+import com.avolution.net.MessagePacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -46,8 +46,8 @@ public class TCPPacketDecoder extends ByteToMessageDecoder {
         // 解密包体内容
         content = decryptContent(content, encryptionType);
 
-        // 构造TCPPacket并添加到out中
-        TCPPacket packet = new TCPPacket(protocolType, encryptionType, protocolId, content);
+        // 构造MessagePacket并添加到out中
+        MessagePacket packet = new MessagePacket(length, content);
         out.add(packet);
     }
 

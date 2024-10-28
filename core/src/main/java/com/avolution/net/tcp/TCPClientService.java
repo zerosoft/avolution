@@ -1,7 +1,6 @@
 package com.avolution.net.tcp;
 
-import com.avolution.actor.RemoteActor;
-import com.avolution.actor.Message;
+import com.avolution.net.MessagePacket;
 import com.avolution.net.tcp.codec.TCPPacketDecoder;
 import com.avolution.net.tcp.codec.TCPPacketEncoder;
 import io.netty.bootstrap.Bootstrap;
@@ -62,7 +61,7 @@ public class TCPClientService {
     }
 
     private void sendInitialPacket(ChannelFuture f) {
-        // 创建初始的TCPPacket
+        // 创建初始的MessagePacket
         String content = "Hello, Server!";
         send(content.getBytes());
     }
@@ -75,7 +74,7 @@ public class TCPClientService {
         executorService.submit(() -> {
             ChannelFuture f = getConnection();
             if (f != null) {
-                TCPPacket packet = new TCPPacket(1, 0, 1001, content);
+                MessagePacket packet = new MessagePacket(12 + content.length, content);
                 f.channel().writeAndFlush(packet);
             }
         });

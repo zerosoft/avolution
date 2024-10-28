@@ -1,6 +1,6 @@
 package com.avolution.net.tcp.codec;
 
-import com.avolution.net.tcp.TCPPacket;
+import com.avolution.net.MessagePacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
@@ -8,22 +8,22 @@ import io.netty.handler.codec.MessageToByteEncoder;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 
-public class TCPPacketEncoder extends MessageToByteEncoder<TCPPacket> {
+public class TCPPacketEncoder extends MessageToByteEncoder<MessagePacket> {
 
     private static final String AES_KEY = "1234567890123456"; // Example AES key, should be securely managed
 
     @Override
-    protected void encode(ChannelHandlerContext ctx, TCPPacket msg, ByteBuf out) throws Exception {
+    protected void encode(ChannelHandlerContext ctx, MessagePacket msg, ByteBuf out) throws Exception {
         // 写入总长度
         out.writeInt(msg.getLength());
         // 写入协议类型
-        out.writeInt(msg.getProtocolType());
+        out.writeInt(((TCPPacket) msg).getProtocolType());
         // 写入加密类型
-        out.writeInt(msg.getEncryptionType());
+        out.writeInt(((TCPPacket) msg).getEncryptionType());
         // 写入协议ID
-        out.writeInt(msg.getProtocolId());
+        out.writeInt(((TCPPacket) msg).getProtocolId());
         // 加密包体内容
-        byte[] encryptedContent = encryptContent(msg.getContent(), msg.getEncryptionType());
+        byte[] encryptedContent = encryptContent(msg.getContent(), ((TCPPacket) msg).getEncryptionType());
         // 写入包体内容
         out.writeBytes(encryptedContent);
     }

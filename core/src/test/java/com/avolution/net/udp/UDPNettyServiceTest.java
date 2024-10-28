@@ -49,4 +49,16 @@ class UDPNettyServiceTest {
         UDPPacket packet = new UDPPacket(1, 0, content);
         // Add logic to simulate outgoing packet and verify handling
     }
+
+    @Test
+    void testSimpleUDPServerHandler() {
+        SimpleUDPServerHandler handler = new SimpleUDPServerHandler();
+        byte[] content = "Test packet".getBytes();
+        UDPPacket packet = new UDPPacket(1, 0, content);
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+
+        handler.channelRead0(ctx, packet);
+
+        verify(ctx, times(1)).writeAndFlush(any(UDPPacket.class));
+    }
 }

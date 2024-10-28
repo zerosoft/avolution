@@ -51,4 +51,39 @@ class RemoteActorTest {
     void testIntegrationWithAbstractActor() {
         assertTrue(remoteActor instanceof AbstractActor);
     }
+
+    @Test
+    void testSendStringMessage() {
+        RemoteActor recipient = new RemoteActor("localhost", 8081);
+        Message message = new Message("Hello");
+        remoteActor.sendMessage(recipient, message);
+        // Add assertions to verify string message sending
+    }
+
+    @Test
+    void testSendByteArrayMessage() {
+        RemoteActor recipient = new RemoteActor("localhost", 8081);
+        byte[] messageContent = "Hello".getBytes();
+        Message message = new Message(new String(messageContent));
+        remoteActor.sendMessage(recipient, message);
+        // Add assertions to verify byte array message sending
+    }
+
+    @Test
+    void testMessageCompression() {
+        String originalMessage = "This is a test message for compression";
+        byte[] compressedMessage = remoteActor.compressMessage(originalMessage.getBytes());
+        assertNotNull(compressedMessage);
+        assertTrue(compressedMessage.length < originalMessage.getBytes().length);
+    }
+
+    @Test
+    void testBatchingMessages() {
+        RemoteActor recipient = new RemoteActor("localhost", 8081);
+        for (int i = 0; i < 10; i++) {
+            Message message = new Message("Message " + i);
+            remoteActor.sendMessage(recipient, message);
+        }
+        // Add assertions to verify message batching
+    }
 }

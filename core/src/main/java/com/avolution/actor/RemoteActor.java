@@ -9,7 +9,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.zip.Deflater;
 
 public class RemoteActor extends AbstractActor {
     private final String host;
@@ -55,7 +54,8 @@ public class RemoteActor extends AbstractActor {
     private void receiveMessages() {
         try {
             while (true) {
-                Message message = (Message) in.readObject();
+                TCPPacket packet = (TCPPacket) in.readObject();
+                Message message = new Message(new String(packet.getContent()));
                 receiveMessage(message);
             }
         } catch (IOException | ClassNotFoundException e) {
@@ -73,26 +73,12 @@ public class RemoteActor extends AbstractActor {
     @Override
     public void sendMessage(Actor recipient, Message message) {
         try {
-            byte[] compressedMessage = compressMessage(message.getContent().getBytes());
-            tcpClientService.send(compressedMessage);
-        } catch (IOException e) {
+            TCPPacket packet = new TCPPacket(1, 0, 1, message.getContent().getBytes());
+            tcpClientService.send(packet.getContent());
+        } catch (Exception e) {
             e.printStackTrace();
             retryConnection();
         }
-    }
-
-    public byte[] compressMessage(byte[] data) throws IOException {
-        Deflater deflater = new Deflater();
-        deflater.setInput(data);
-        deflater.finish();
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(data.length);
-        byte[] buffer = new byte[1024];
-        while (!deflater.finished()) {
-            int count = deflater.deflate(buffer);
-            outputStream.write(buffer, 0, count);
-        }
-        outputStream.close();
-        return outputStream.toByteArray();
     }
 
     private void processMessages() {

@@ -92,8 +92,8 @@ public class UDPClientService {
         executorService.submit(() -> {
             ChannelFuture f = getConnection();
             if (f != null) {
-                MessagePacket packet = new MessagePacket(8 + content.length, content);
-                sentPackets.put(sequenceNumber++, packet);
+                UDPPacket packet = new UDPPacket(sequenceNumber++, acknowledgmentNumber, content);
+                sentPackets.put(sequenceNumber, packet);
                 sentTimestamps.put(sequenceNumber, System.currentTimeMillis());
                 f.channel().writeAndFlush(packet);
             }
@@ -142,7 +142,7 @@ public class UDPClientService {
             long currentTime = System.currentTimeMillis();
             for (int seqNum : sentPackets.keySet()) {
                 if (currentTime - sentTimestamps.get(seqNum) > 1000) { // 1 second timeout
-                    MessagePacket packet = sentPackets.get(seqNum);
+                    UDPPacket packet = sentPackets.get(seqNum);
                     send(packet.getContent());
                 }
             }

@@ -1,6 +1,7 @@
 package com.avolution.net.tcp.codec;
 
 import com.avolution.net.MessagePacket;
+import com.avolution.net.tcp.TCPPacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;

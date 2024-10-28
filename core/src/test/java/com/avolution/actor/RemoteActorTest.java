@@ -3,6 +3,8 @@ package com.avolution.actor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class RemoteActorTest {
@@ -72,7 +74,12 @@ class RemoteActorTest {
     @Test
     void testMessageCompression() {
         String originalMessage = "This is a test message for compression";
-        byte[] compressedMessage = remoteActor.compressMessage(originalMessage.getBytes());
+        byte[] compressedMessage = null;
+        try {
+            compressedMessage = remoteActor.compressMessage(originalMessage.getBytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         assertNotNull(compressedMessage);
         assertTrue(compressedMessage.length < originalMessage.getBytes().length);
     }

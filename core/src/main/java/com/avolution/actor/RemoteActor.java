@@ -81,7 +81,7 @@ public class RemoteActor extends AbstractActor {
         }
     }
 
-    private byte[] compressMessage(byte[] data) throws IOException {
+    public byte[] compressMessage(byte[] data) throws IOException {
         Deflater deflater = new Deflater();
         deflater.setInput(data);
         deflater.finish();

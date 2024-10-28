@@ -49,20 +49,11 @@ public class TCPClientService {
             ChannelFuture f = b.connect(host, port).sync();
             System.out.println("Connected to server: " + host + ":" + port);
 
-            // 发送一个初始包到服务器
-            sendInitialPacket(f);
-
             // 等待连接关闭
             f.channel().closeFuture().sync();
         } finally {
             group.shutdownGracefully();
         }
-    }
-
-    private void sendInitialPacket(ChannelFuture f) {
-        // 创建初始的TCPPacket
-        String content = "Hello, Server!";
-        send(content.getBytes());
     }
 
     public void send(String content) {

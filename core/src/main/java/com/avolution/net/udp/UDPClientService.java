@@ -64,9 +64,6 @@ public class UDPClientService {
             ChannelFuture f = b.connect(host, port).sync();
             System.out.println("Connected to server: " + host + ":" + port);
 
-            // 发送一个初始包到服务器
-            sendInitialPacket(f);
-
             // 启动重传机制
             startRetransmission();
 
@@ -75,12 +72,6 @@ public class UDPClientService {
         } finally {
             group.shutdownGracefully();
         }
-    }
-
-    private void sendInitialPacket(ChannelFuture f) {
-        // 创建初始的MessagePacket
-        String content = "Hello, Server!";
-        send(content.getBytes());
     }
 
     public void send(String content) {

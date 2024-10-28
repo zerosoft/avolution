@@ -9,18 +9,15 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import com.avolution.actor.Supervisor;
 import com.avolution.service.IService;
 
 public class TCPNettyService implements IService {
 
     private final int port;
-    private final Supervisor supervisor;
     private volatile Status status;
 
     public TCPNettyService(int port) {
         this.port = port;
-        this.supervisor = new Supervisor(Supervisor.SupervisionStrategy.RESTART);
         this.status = Status.STOPPED;
     }
 

@@ -21,14 +21,12 @@ public class TCPClientService {
 
     private final String host;
     private final int port;
-    private final RemoteActor remoteActor;
     private final ConcurrentLinkedQueue<ChannelFuture> connectionPool;
     private final ExecutorService executorService;
 
     public TCPClientService(String host, int port) {
         this.host = host;
         this.port = port;
-        this.remoteActor = new RemoteActor(host, port);
         this.connectionPool = new ConcurrentLinkedQueue<>();
         this.executorService = Executors.newCachedThreadPool();
     }
@@ -67,9 +65,6 @@ public class TCPClientService {
         // 创建初始的TCPPacket
         String content = "Hello, Server!";
         send(content.getBytes());
-
-        // Use RemoteActor to send a message
-        remoteActor.sendMessage(remoteActor, new Message(content));
     }
 
     public void send(String content) {
@@ -126,6 +121,9 @@ public class TCPClientService {
     public static void main(String[] args) throws InterruptedException {
         String host = "127.0.0.1";  // 服务器地址
         int port = 8080;  // 服务器端口
-        new TCPClientService(host, port).start();
+        TCPClientService clientService = new TCPClientService(host, port);
+        clientService.start();
+
+        clientService.send("Hello");
     }
 }

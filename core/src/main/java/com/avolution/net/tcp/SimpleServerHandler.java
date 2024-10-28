@@ -9,12 +9,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 public class SimpleServerHandler extends SimpleChannelInboundHandler<TCPPacket> {
 
     private final BasicActor actor;
-    private final Supervisor supervisor;
 
-    public SimpleServerHandler(Supervisor supervisor) {
+    public SimpleServerHandler() {
         this.actor = new BasicActor();
-        this.supervisor = supervisor;
-        this.supervisor.addActor(actor);
     }
 
     @Override

@@ -37,7 +37,7 @@ public class TCPNettyService {
                             ch.pipeline().addLast(new TCPPacketDecoder());  // 自定义解码器
                             ch.pipeline().addLast(new TCPPacketEncoder());  // 自定义编码器
                             SimpleServerHandler handler = new SimpleServerHandler();
-                            supervisor.addActor(handler.getActor());
+//                            supervisor.addActor(handler.getActor());
                             ch.pipeline().addLast(handler);  // 业务处理器
                         }
                     });

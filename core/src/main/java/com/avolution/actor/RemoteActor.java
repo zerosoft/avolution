@@ -29,7 +29,7 @@ public class RemoteActor extends AbstractActor {
             this.socket = new Socket(host, port);
             this.out = new ObjectOutputStream(socket.getOutputStream());
             this.in = new ObjectInputStream(socket.getInputStream());
-            this.executorService.submit(this::receiveMessages);
+//            this.executorService.submit(this::receiveMessages);
         } catch (IOException e) {
             e.printStackTrace();
             retryConnection();

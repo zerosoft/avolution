@@ -1,22 +1,41 @@
 package com.avolution.service;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ServiceManager {
     private final Map<String, IService> services;
+
     private final ExecutorService executorService;
+
     private final ReentrantLock lock;
+
     private final int maxRetries;
+
     private final long initialRetryDelay;
 
     public ServiceManager() {
         this.services = new ConcurrentHashMap<>();
-        this.executorService = Executors.newCachedThreadPool();
+        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
         this.lock = new ReentrantLock();
         this.maxRetries = 3;
         this.initialRetryDelay = 1000; // 1 second
+    }
+
+    public CompletableFuture<Void> schedule(Runnable task, Duration delay) {
+        // 创建一个 CompletableFuture，用于调度任务
+        return CompletableFuture.runAsync(() -> {
+            try {
+                // 等待指定的延迟时间
+                Thread.sleep(delay.toMillis());
+                // 执行任务
+                task.run();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // 处理中断
+            }
+        }, executorService);
     }
 
     public void addService(String name, IService service) {
@@ -136,14 +155,14 @@ public class ServiceManager {
             service.start();
             if (!service.isRunning() && attempt < maxRetries) {
                 long delay = initialRetryDelay * (1 << attempt); // Exponential backoff
-                executorService.schedule(() -> attemptStartService(service, attempt + 1), delay, TimeUnit.MILLISECONDS);
+                schedule(() -> attemptStartService(service, attempt + 1),Duration.ofMillis(delay));
             } else if (!service.isRunning()) {
                 System.err.println("Failed to start service after " + maxRetries + " attempts: " + service.getStatusInfo());
             }
         } catch (Exception e) {
             if (attempt < maxRetries) {
                 long delay = initialRetryDelay * (1 << attempt); // Exponential backoff
-                executorService.schedule(() -> attemptStartService(service, attempt + 1), delay, TimeUnit.MILLISECONDS);
+                schedule(() -> attemptStartService(service, attempt + 1), Duration.ofMillis(delay));
             } else {
                 System.err.println("Failed to start service after " + maxRetries + " attempts: " + service.getStatusInfo());
             }

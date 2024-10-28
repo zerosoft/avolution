@@ -1,4 +1,5 @@
-import com.avolution.net.tcp.SimpleServerHandler;
+package com.avolution.net.tcp;
+
 import com.avolution.net.tcp.codec.TCPPacketDecoder;
 import com.avolution.net.tcp.codec.TCPPacketEncoder;
 import io.netty.bootstrap.ServerBootstrap;

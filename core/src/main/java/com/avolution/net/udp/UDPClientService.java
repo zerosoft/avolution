@@ -1,6 +1,5 @@
 package com.avolution.net.udp;
 
-import com.avolution.net.MessagePacket;
 import com.avolution.net.udp.codec.UDPPacketDecoder;
 import com.avolution.net.udp.codec.UDPPacketEncoder;
 import io.netty.bootstrap.Bootstrap;
@@ -93,6 +92,7 @@ public class UDPClientService {
             ChannelFuture f = getConnection();
             if (f != null) {
                 UDPPacket packet = new UDPPacket(sequenceNumber++, acknowledgmentNumber, content);
+                packet.setEncryptionType(1); // 设置加密类型
                 sentPackets.put(sequenceNumber, packet);
                 sentTimestamps.put(sequenceNumber, System.currentTimeMillis());
                 f.channel().writeAndFlush(packet);

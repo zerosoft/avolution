@@ -36,6 +36,9 @@ public class SimpleUDPServerHandler extends SimpleChannelInboundHandler<UDPPacke
                 throw new IllegalArgumentException("Unknown encryption type: " + packet.getEncryptionType());
         }
 
+        // Output the message content
+        System.out.println("Message Content: " + new String(packet.getContent()));
+
         // Reply with a new UDPPacket as a response
         String responseContent = "Response to Sequence Number " + packet.getSequenceNumber();
         UDPPacket responsePacket = new UDPPacket(packet.getSequenceNumber(), packet.getAcknowledgmentNumber(), responseContent.getBytes());

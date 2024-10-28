@@ -6,13 +6,11 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class ServiceManager {
     private final Map<String, IService> services;
-    private final Map<String, List<String>> dependencies;
     private final ExecutorService executorService;
     private final ReentrantLock lock;
 
     public ServiceManager() {
         this.services = new ConcurrentHashMap<>();
-        this.dependencies = new ConcurrentHashMap<>();
         this.executorService = Executors.newCachedThreadPool();
         this.lock = new ReentrantLock();
     }
@@ -30,8 +28,6 @@ public class ServiceManager {
         lock.lock();
         try {
             services.remove(name);
-            dependencies.remove(name);
-            dependencies.values().forEach(deps -> deps.remove(name));
         } finally {
             lock.unlock();
         }
@@ -41,27 +37,6 @@ public class ServiceManager {
         lock.lock();
         try {
             return services.get(name);
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void addDependency(String service, String dependency) {
-        lock.lock();
-        try {
-            dependencies.computeIfAbsent(service, k -> new ArrayList<>()).add(dependency);
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void removeDependency(String service, String dependency) {
-        lock.lock();
-        try {
-            List<String> deps = dependencies.get(service);
-            if (deps != null) {
-                deps.remove(dependency);
-            }
         } finally {
             lock.unlock();
         }
@@ -111,10 +86,10 @@ public class ServiceManager {
         }
     }
 
-    public Map<String, String> getAllServiceStatuses() {
+    public Map<String, IService.Status> getAllServiceStatuses() {
         lock.lock();
         try {
-            Map<String, String> statuses = new HashMap<>();
+            Map<String, IService.Status> statuses = new HashMap<>();
             for (Map.Entry<String, IService> entry : services.entrySet()) {
                 statuses.put(entry.getKey(), entry.getValue().getStatus());
             }
@@ -128,12 +103,6 @@ public class ServiceManager {
         executorService.submit(() -> {
             lock.lock();
             try {
-                List<String> deps = dependencies.get(name);
-                if (deps != null) {
-                    for (String dep : deps) {
-                        startService(dep);
-                    }
-                }
                 IService service = services.get(name);
                 if (service != null) {
                     service.start();
@@ -162,12 +131,6 @@ public class ServiceManager {
         executorService.submit(() -> {
             lock.lock();
             try {
-                List<String> deps = dependencies.get(name);
-                if (deps != null) {
-                    for (String dep : deps) {
-                        stopService(dep);
-                    }
-                }
                 IService service = services.get(name);
                 if (service != null) {
                     service.stop();

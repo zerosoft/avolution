@@ -1,5 +1,6 @@
 package com.avolution.net.udp;
 
+import com.avolution.net.MessagePacket;
 import com.avolution.net.udp.codec.UDPPacketDecoder;
 import com.avolution.net.udp.codec.UDPPacketEncoder;
 import io.netty.bootstrap.Bootstrap;
@@ -78,7 +79,7 @@ public class UDPClientService {
     }
 
     private void sendInitialPacket(ChannelFuture f) {
-        // 创建初始的UDPPacket
+        // 创建初始的MessagePacket
         String content = "Hello, Server!";
         send(content.getBytes());
     }
@@ -91,9 +92,9 @@ public class UDPClientService {
         executorService.submit(() -> {
             ChannelFuture f = getConnection();
             if (f != null) {
-                UDPPacket packet = new UDPPacket(sequenceNumber++, acknowledgmentNumber, content);
-                sentPackets.put(packet.getSequenceNumber(), packet);
-                sentTimestamps.put(packet.getSequenceNumber(), System.currentTimeMillis());
+                MessagePacket packet = new MessagePacket(8 + content.length, content);
+                sentPackets.put(sequenceNumber++, packet);
+                sentTimestamps.put(sequenceNumber, System.currentTimeMillis());
                 f.channel().writeAndFlush(packet);
             }
         });
@@ -141,7 +142,7 @@ public class UDPClientService {
             long currentTime = System.currentTimeMillis();
             for (int seqNum : sentPackets.keySet()) {
                 if (currentTime - sentTimestamps.get(seqNum) > 1000) { // 1 second timeout
-                    UDPPacket packet = sentPackets.get(seqNum);
+                    MessagePacket packet = sentPackets.get(seqNum);
                     send(packet.getContent());
                 }
             }

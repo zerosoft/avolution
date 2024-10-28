@@ -1,6 +1,6 @@
 package com.avolution.net.udp.codec;
 
-import com.avolution.net.udp.UDPPacket;
+import com.avolution.net.MessagePacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -44,8 +44,8 @@ public class UDPPacketDecoder extends ByteToMessageDecoder {
         // Decrypt the packet body content
         content = decryptContent(content);
 
-        // Construct UDPPacket and add to out
-        UDPPacket packet = new UDPPacket(sequenceNumber, acknowledgmentNumber, content);
+        // Construct MessagePacket and add to out
+        MessagePacket packet = new MessagePacket(length, content);
         out.add(packet);
     }
 

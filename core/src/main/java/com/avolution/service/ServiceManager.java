@@ -8,11 +8,15 @@ public class ServiceManager {
     private final Map<String, IService> services;
     private final ExecutorService executorService;
     private final ReentrantLock lock;
+    private final int maxRetries;
+    private final long initialRetryDelay;
 
     public ServiceManager() {
         this.services = new ConcurrentHashMap<>();
         this.executorService = Executors.newCachedThreadPool();
         this.lock = new ReentrantLock();
+        this.maxRetries = 3;
+        this.initialRetryDelay = 1000; // 1 second
     }
 
     public void addService(String name, IService service) {
@@ -99,18 +103,51 @@ public class ServiceManager {
         }
     }
 
+    public boolean confirmAllServicesStarted() {
+        lock.lock();
+        try {
+            for (IService service : services.values()) {
+                if (!service.isRunning()) {
+                    return false;
+                }
+            }
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void startService(String name) {
         executorService.submit(() -> {
             lock.lock();
             try {
                 IService service = services.get(name);
                 if (service != null) {
-                    service.start();
+                    attemptStartService(service, 0);
                 }
             } finally {
                 lock.unlock();
             }
         });
+    }
+
+    private void attemptStartService(IService service, int attempt) {
+        try {
+            service.start();
+            if (!service.isRunning() && attempt < maxRetries) {
+                long delay = initialRetryDelay * (1 << attempt); // Exponential backoff
+                executorService.schedule(() -> attemptStartService(service, attempt + 1), delay, TimeUnit.MILLISECONDS);
+            } else if (!service.isRunning()) {
+                System.err.println("Failed to start service after " + maxRetries + " attempts: " + service.getStatusInfo());
+            }
+        } catch (Exception e) {
+            if (attempt < maxRetries) {
+                long delay = initialRetryDelay * (1 << attempt); // Exponential backoff
+                executorService.schedule(() -> attemptStartService(service, attempt + 1), delay, TimeUnit.MILLISECONDS);
+            } else {
+                System.err.println("Failed to start service after " + maxRetries + " attempts: " + service.getStatusInfo());
+            }
+        }
     }
 
     private void pauseService(String name) {

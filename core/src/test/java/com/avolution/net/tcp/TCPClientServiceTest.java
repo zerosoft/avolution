@@ -1,6 +1,7 @@
 package com.avolution.net.tcp;
 
 import com.avolution.net.MessagePacket;
+import com.avolution.service.IService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

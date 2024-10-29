@@ -17,7 +17,7 @@ public interface IService {
     /**
      * Start
      */
-    void start();
+    void start() throws InterruptedException;
 
     /**
      * Pause the service.

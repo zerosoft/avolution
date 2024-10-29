@@ -1,129 +1,65 @@
 package com.avolution.actor;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ActorSystem {
-    private final ConcurrentMap<String, AbstractActor> actorRegistry;
-    private final ExecutorService executorService;
 
-    public ActorSystem() {
-        this.actorRegistry = new ConcurrentHashMap<>();
-        this.executorService = Executors.newCachedThreadPool();
+    private final String name;
+
+    private final Map<String, ActorRef> actors = new ConcurrentHashMap<>();
+
+    private final AtomicBoolean isTerminated = new AtomicBoolean(false);
+
+    private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
+
+    private ActorSystem(String name) {
+        this.name = name;
     }
 
-    public AbstractActor createActor(Class<? extends AbstractActor> actorClass) {
+    public static ActorSystem create(String name) {
+        return new ActorSystem(name);
+    }
+
+    public ActorRef actorOf(Props props, String name) {
+        if (isTerminated.get()) {
+            throw new IllegalStateException("Actor system is terminated");
+        }
+
+        String path = "user/" + name;
+        if (actors.containsKey(path)) {
+            throw new IllegalArgumentException("Actor with path " + path + " already exists");
+        }
+
         try {
-            AbstractActor actor = actorClass.getDeclaredConstructor().newInstance();
-            String actorId = generateUniqueId();
-            actor.setId(actorId);
-            actorRegistry.put(actorId, actor);
-            return actor;
+            Actor actor = props.newActor();
+            ActorRef ref = new ActorRefImpl(path, actor, new ActorContextImpl(this, null, null));
+            actor.setContext(new ActorContextImpl(this, ref, null), ref);
+            actor.preStart();
+
+            actors.put(path, ref);
+            return ref;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create actor", e);
         }
     }
 
-    public AbstractActor getActor(String actorId) {
-        return actorRegistry.get(actorId);
-    }
-
-    public void terminateActor(String actorId) {
-        AbstractActor actor = actorRegistry.remove(actorId);
-        if (actor != null) {
-            actor.stop();
+    public void stop(ActorRef actor) {
+        ActorRefImpl actorRef = (ActorRefImpl) actors.remove(actor.path());
+        if (actorRef != null) {
+            actorRef.stop();
         }
     }
 
-    public void sendMessage(String actorId, Message message) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            actor.receiveMessage(message);
+    public void terminate() {
+        if (isTerminated.compareAndSet(false, true)) {
+            actors.values().forEach(this::stop);
+            terminationFuture.complete(null);
         }
     }
 
-    public void addChildActor(String parentId, String childId) {
-        AbstractActor parent = getActor(parentId);
-        AbstractActor child = getActor(childId);
-        if (parent != null && child != null) {
-            parent.addChild(child);
-        }
-    }
-
-    public void removeChildActor(String parentId, String childId) {
-        AbstractActor parent = getActor(parentId);
-        AbstractActor child = getActor(childId);
-        if (parent != null && child != null) {
-            parent.removeChild(child);
-        }
-    }
-
-    public void restartActor(String actorId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            actor.restart();
-        }
-    }
-
-    public void stopActor(String actorId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            actor.stop();
-        }
-    }
-
-    public void resumeActor(String actorId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            actor.resume();
-        }
-    }
-
-    public void monitorActorHealth(String actorId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            // Implement health monitoring logic here
-        }
-    }
-
-    public void handleActorFailure(String actorId, Throwable cause) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            actor.propagateError(cause);
-        }
-    }
-
-    public void traverseHierarchy() {
-        for (AbstractActor actor : actorRegistry.values()) {
-            traverseActorHierarchy(actor);
-        }
-    }
-
-    private void traverseActorHierarchy(AbstractActor actor) {
-        // Implement hierarchy traversal logic here
-    }
-
-    public void distributeActor(String actorId, String nodeId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            // Implement actor distribution logic here
-        }
-    }
-
-    public void replicateActorState(String actorId) {
-        AbstractActor actor = getActor(actorId);
-        if (actor != null) {
-            // Implement actor state replication logic here
-        }
-    }
-
-    public void monitorDistributedSystem() {
-        // Implement distributed system monitoring logic here
-    }
-
-    private String generateUniqueId() {
-        return java.util.UUID.randomUUID().toString();
+    public CompletionStage<Void> getWhenTerminated() {
+        return terminationFuture;
     }
 }

@@ -2,6 +2,7 @@ package com.avolution.net.tcp;
 
 import com.avolution.net.tcp.codec.TCPPacketDecoder;
 import com.avolution.net.tcp.codec.TCPPacketEncoder;
+import com.avolution.service.IService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -16,21 +17,28 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class TCPClientService {
+public class TCPClientService implements IService {
 
     private final String host;
     private final int port;
     private final ConcurrentLinkedQueue<ChannelFuture> connectionPool;
     private final ExecutorService executorService;
+    private volatile Status status;
 
     public TCPClientService(String host, int port) {
         this.host = host;
         this.port = port;
         this.connectionPool = new ConcurrentLinkedQueue<>();
         this.executorService = Executors.newCachedThreadPool();
+        this.status = Status.STOPPED;
     }
 
+    @Override
     public void start() throws InterruptedException {
+        if (status == Status.RUNNING || status == Status.STARTING) {
+            return;
+        }
+        status = Status.STARTING;
         EventLoopGroup group = new NioEventLoopGroup();
         try {
             Bootstrap b = new Bootstrap();
@@ -52,9 +60,53 @@ public class TCPClientService {
 
             // 等待连接关闭
             f.channel().closeFuture().sync();
+            status = Status.RUNNING;
         } finally {
             group.shutdownGracefully();
+            status = Status.STOPPED;
         }
+    }
+
+    @Override
+    public void pause() {
+        if (status == Status.RUNNING) {
+            status = Status.PAUSED;
+            // Implement pause logic if needed
+        }
+    }
+
+    @Override
+    public void stop() {
+        if (status == Status.RUNNING || status == Status.PAUSED) {
+            status = Status.STOPPING;
+            // Implement stop logic if needed
+            status = Status.STOPPED;
+        }
+    }
+
+    @Override
+    public void restart() {
+        stop();
+        try {
+            start();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
+    public boolean isRunning() {
+        return status == Status.RUNNING;
+    }
+
+    @Override
+    public Status getStatus() {
+        return status;
+    }
+
+    @Override
+    public String getStatusInfo() {
+        return "TCPClientService is currently " + status;
     }
 
     public void send(String content) {
@@ -112,7 +164,6 @@ public class TCPClientService {
         String host = "127.0.0.1";  // 服务器地址
         int port = 8080;  // 服务器端口
         TCPClientService clientService = new TCPClientService(host, port);
-
 
         Executors.newVirtualThreadPerTaskExecutor().submit(new Runnable() {
             @Override

@@ -53,4 +53,33 @@ class TCPClientServiceTest {
         assertEquals(content.length, packet.getLength());
         assertArrayEquals(content, packet.getContent());
     }
+
+    @Test
+    void testStartService() throws InterruptedException {
+        tcpClientService.start();
+        assertTrue(tcpClientService.isRunning());
+    }
+
+    @Test
+    void testPauseService() {
+        tcpClientService.pause();
+        assertEquals(IService.Status.PAUSED, tcpClientService.getStatus());
+    }
+
+    @Test
+    void testStopService() {
+        tcpClientService.stop();
+        assertEquals(IService.Status.STOPPED, tcpClientService.getStatus());
+    }
+
+    @Test
+    void testRestartService() throws InterruptedException {
+        tcpClientService.restart();
+        assertTrue(tcpClientService.isRunning());
+    }
+
+    @Test
+    void testSessionManagement() {
+        // Add test logic to verify session management functionality
+    }
 }

@@ -24,7 +24,7 @@ class ActorRefImpl implements ActorRef {
     }
 
     @Override
-    public void tell(Object message, ActorRef sender) {
+    public void tellMessage(Object message, ActorRef sender) {
         if (isAlive) {
             mailbox.offer(new MessageEnvelope(message, sender));
         }
@@ -32,7 +32,7 @@ class ActorRefImpl implements ActorRef {
 
     @Override
     public void forward(Object message, ActorContext context) {
-        tell(message, context.sender());
+        tellMessage(message, context.sender());
     }
 
     @Override

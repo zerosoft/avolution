@@ -5,7 +5,7 @@ public class HelloActor extends Actor{
     protected void receive(Object message) {
         if (message instanceof String msg) {
             System.out.println("Received: " + msg);
-            sender().tell("Hello back!", self());
+            sender().tellMessage("Hello back!", self());
         }
     }
 }

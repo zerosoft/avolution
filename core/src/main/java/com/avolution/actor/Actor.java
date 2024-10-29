@@ -3,7 +3,9 @@ package com.avolution.actor;
 import java.util.Optional;
 
 public abstract class Actor {
+
     private ActorContext context;
+
     private ActorRef self;
 
     public void setContext(ActorContext context, ActorRef self) {

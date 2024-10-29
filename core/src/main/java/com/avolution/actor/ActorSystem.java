@@ -8,6 +8,8 @@ public class ActorSystem {
 
     private final String name;
 
+    private Actor rootActor;
+
     private final Map<String, ActorRef> actors = new ConcurrentHashMap<>();
 
     private final AtomicBoolean isTerminated = new AtomicBoolean(false);
@@ -16,6 +18,12 @@ public class ActorSystem {
 
     private ActorSystem(String name) {
         this.name = name;
+        rootActor=new Actor() {
+            @Override
+            protected void receive(Object message) {
+                // Ignore
+            }
+        };
     }
 
     public static ActorSystem create(String name) {

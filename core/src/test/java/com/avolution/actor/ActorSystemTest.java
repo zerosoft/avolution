@@ -18,7 +18,7 @@ public class ActorSystemTest {
         ActorRef helloActor = system.actorOf(Props.create(HelloActor.class), "hello");
 
         // 发送消息
-        helloActor.tell("Hello!", null);
+        helloActor.tellMessage("Hello!", null);
 
         // 等待一段时间后终止系统
         try {

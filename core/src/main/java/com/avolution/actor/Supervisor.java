@@ -19,7 +19,7 @@ public class Supervisor {
     }
 
     public void handleFailure(AbstractActor actor, Throwable cause) {
-        logger.severe("Actor failed: " + actor + ", cause: " + cause.getMessage());
+        logger.severe("Actor failed: " + actor.getId() + ", cause: " + cause.getMessage());
         switch (strategy) {
             case RESTART:
                 restartActor(actor);
@@ -34,17 +34,17 @@ public class Supervisor {
     }
 
     private void restartActor(AbstractActor actor) {
-        logger.info("Restarting actor: " + actor);
+        logger.info("Restarting actor: " + actor.getId());
         actor.restart();
     }
 
     private void stopActor(AbstractActor actor) {
-        logger.info("Stopping actor: " + actor);
+        logger.info("Stopping actor: " + actor.getId());
         actor.stop();
     }
 
     private void resumeActor(AbstractActor actor) {
-        logger.info("Resuming actor: " + actor);
+        logger.info("Resuming actor: " + actor.getId());
         actor.resume();
     }
 

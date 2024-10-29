@@ -20,8 +20,8 @@ public class RemoteActor extends AbstractActor {
     private final BlockingQueue<Message> messageQueue;
     private final ExecutorService executorService;
 
-    public RemoteActor(String host, int port) {
-        super();
+    public RemoteActor(String id, String host, int port) {
+        super(id);
         this.host = host;
         this.port = port;
         this.tcpClientService = new TCPClientService(host, port);

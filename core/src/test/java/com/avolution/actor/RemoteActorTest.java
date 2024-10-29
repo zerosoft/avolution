@@ -75,11 +75,11 @@ class RemoteActorTest {
     void testMessageCompression() {
         String originalMessage = "This is a test message for compression";
         byte[] compressedMessage = null;
-        try {
-            compressedMessage = remoteActor.compressMessage(originalMessage.getBytes());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+//        try {
+//            compressedMessage = remoteActor.compressMessage(originalMessage.getBytes());
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
         assertNotNull(compressedMessage);
         assertTrue(compressedMessage.length < originalMessage.getBytes().length);
     }

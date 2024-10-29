@@ -147,9 +147,21 @@ public class UDPClientService {
 
     public static void main(String[] args) throws InterruptedException {
         String host = "127.0.0.1";  // 服务器地址
-        int port = 8080;  // 服务器端口
+        int port = 8090;  // 服务器端口
         UDPClientService clientService = new UDPClientService(host, port);
-        clientService.start();
+
+        Executors.newVirtualThreadPerTaskExecutor().submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    clientService.start();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        Thread.sleep(100L);
 
         clientService.send("Hello");
     }

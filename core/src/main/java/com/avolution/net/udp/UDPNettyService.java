@@ -102,7 +102,7 @@ public class UDPNettyService implements IService {
     }
 
     public static void main(String[] args) {
-        int port = 8080;
+        int port = 8090;
         UDPNettyService service = new UDPNettyService(port);
         service.start();
     }

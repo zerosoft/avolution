@@ -12,6 +12,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -111,7 +112,20 @@ public class TCPClientService {
         String host = "127.0.0.1";  // 服务器地址
         int port = 8080;  // 服务器端口
         TCPClientService clientService = new TCPClientService(host, port);
-        clientService.start();
+
+
+        Executors.newVirtualThreadPerTaskExecutor().submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    clientService.start();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        Thread.sleep(100L);
 
         clientService.send("Hello");
     }

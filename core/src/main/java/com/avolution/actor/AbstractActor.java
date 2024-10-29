@@ -12,12 +12,14 @@ public abstract class AbstractActor implements Actor {
     private final ExecutorService executorService;
     private final List<AbstractActor> children;
     private AbstractActor parent;
+    private String id;
 
-    public AbstractActor() {
+    public AbstractActor(String id) {
         this.messageQueue = new LinkedBlockingQueue<>();
         this.executorService = Executors.newSingleThreadExecutor();
         this.executorService.submit(this::processMessages);
         this.children = new ArrayList<>();
+        this.id = id;
     }
 
     @Override
@@ -86,5 +88,21 @@ public abstract class AbstractActor implements Actor {
     protected void handleError(AbstractActor child, Throwable cause) {
         System.out.println("Handling error from child: " + child);
         propagateError(cause);
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void monitorHealth() {
+        // Implement health monitoring logic here
+    }
+
+    public void handleFailure(Throwable cause) {
+        // Implement failure handling logic here
     }
 }

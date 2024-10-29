@@ -7,8 +7,8 @@ import java.util.concurrent.Executors;
 
 public class BasicActor extends AbstractActor {
 
-    public BasicActor() {
-        super();
+    public BasicActor(String id) {
+        super(id);
     }
 
     @Override
@@ -16,5 +16,10 @@ public class BasicActor extends AbstractActor {
         // Custom message handling logic
         System.out.println("Processing message: " + message.getContent());
         // Add more custom handling logic here
+    }
+
+    @Override
+    public void sendMessage(Actor recipient, Message message) {
+        recipient.receiveMessage(message);
     }
 }

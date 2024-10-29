@@ -6,8 +6,12 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 
 import java.util.List;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 public class TCPPacketDecoder extends ByteToMessageDecoder {
+
+    private static final Logger logger = LogManager.getLogger(TCPPacketDecoder.class);
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
@@ -42,5 +46,9 @@ public class TCPPacketDecoder extends ByteToMessageDecoder {
         // 构造TCPPacket并添加到out中
         TCPPacket packet = new TCPPacket(protocolType, encryptionType, protocolId, content);
         out.add(packet);
+
+        // Add debug logs to trace the decoding process
+        logger.debug("Decoded TCPPacket: protocolType={}, encryptionType={}, protocolId={}, content={}",
+                protocolType, encryptionType, protocolId, new String(content));
     }
 }

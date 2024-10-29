@@ -6,8 +6,12 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 
 import java.util.List;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 public class UDPPacketDecoder extends ByteToMessageDecoder {
+
+    private static final Logger logger = LogManager.getLogger(UDPPacketDecoder.class);
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
@@ -40,5 +44,9 @@ public class UDPPacketDecoder extends ByteToMessageDecoder {
         // Construct UDPPacket and add to out
         UDPPacket packet = new UDPPacket(sequenceNumber, acknowledgmentNumber, content);
         out.add(packet);
+
+        // Add debug logs to trace the decoding process
+        logger.debug("Decoded UDPPacket: sequenceNumber={}, acknowledgmentNumber={}, content={}",
+                sequenceNumber, acknowledgmentNumber, new String(content));
     }
 }

@@ -7,4 +7,6 @@ public interface ActorRef {
     void forward(Object message, ActorContext context);
 
     String path();
+
+    ActorRef createChild(Props props, String name);
 }

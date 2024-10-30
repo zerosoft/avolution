@@ -55,4 +55,8 @@ public class ActorContextImpl implements ActorContext {
     public void setSender(ActorRef sender) {
         this.sender = sender;
     }
+
+    public ActorRef createChild(Props props, String name) {
+        return actorOf(props, name);
+    }
 }

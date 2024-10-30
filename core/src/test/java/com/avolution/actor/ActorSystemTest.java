@@ -70,10 +70,11 @@ public class ActorSystemTest {
         // 创建Actor实例
         ActorRef helloActor = system.actorOf(Props.create(HelloActor.class), "hello"+ 1);
 
-        // 创建Actor实例
-        ActorRef helloActor2 = system.actorOf(Props.create(HelloActor.class), "hello"+ 2);
+        // 创建子Actor实例
+        ActorRef childActor = helloActor.createChild(Props.create(HelloActor.class), "child");
 
-        helloActor.tellMessage("Hello Back",helloActor2);
+        // 发送消息给子Actor
+        childActor.tellMessage("Hello Child", helloActor);
 
         // 等待一段时间后终止系统
         try {

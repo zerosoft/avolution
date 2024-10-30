@@ -74,6 +74,11 @@ class ActorRefImpl implements ActorRef {
         return path;
     }
 
+    @Override
+    public ActorRef createChild(Props props, String name) {
+        return ((ActorContextImpl) context).actorOf(props, name);
+    }
+
     private void processMessages() {
         while (isAlive) {
             try {

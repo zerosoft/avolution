@@ -4,8 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -77,6 +79,11 @@ class ActorRefImpl implements ActorRef {
     @Override
     public ActorRef createChild(Props props, String name) {
         return ((ActorContextImpl) context).actorOf(props, name);
+    }
+
+    @Override
+    public <T> CompletableFuture<T> ask(Object message, long timeout, TimeUnit unit) {
+        return new ASK().ask(this, message, timeout, unit);
     }
 
     private void processMessages() {

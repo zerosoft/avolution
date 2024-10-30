@@ -76,7 +76,7 @@ class ActorRefImpl implements ActorRef {
 
     @Override
     public ActorRef createChild(Props props, String name) {
-        return ((ActorContextImpl) context).actorOf(props, name);
+        return  context.actorOf(props, name);
     }
 
     private void processMessages() {
@@ -84,8 +84,6 @@ class ActorRefImpl implements ActorRef {
             try {
                 // 使用 take() 方法阻塞，直到有新消息
                 MessageEnvelope envelope = mailbox.take();
-                ((ActorContextImpl) context).setSender(envelope.sender());
-
                 // 处理消息
                 try {
                     actor.context().setSender(envelope.sender());

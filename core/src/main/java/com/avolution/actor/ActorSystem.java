@@ -18,12 +18,7 @@ public class ActorSystem {
 
     private ActorSystem(String name) {
         this.name = name;
-        rootActor=new Actor() {
-            @Override
-            protected void receive(Object message) {
-                // Ignore
-            }
-        };
+        rootActor=new RootActor(this);
     }
 
     public static ActorSystem create(String name) {
@@ -35,7 +30,7 @@ public class ActorSystem {
             throw new IllegalStateException("Actor system is terminated");
         }
 
-        String path = "user/" + name;
+        String path = "usr/" + name;
         if (actors.containsKey(path)) {
             throw new IllegalArgumentException("Actor with path " + path + " already exists");
         }
@@ -69,5 +64,9 @@ public class ActorSystem {
 
     public CompletionStage<Void> getWhenTerminated() {
         return terminationFuture;
+    }
+
+    public void processMessage(Object message) {
+
     }
 }

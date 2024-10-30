@@ -6,9 +6,11 @@ public interface ActorContext {
 
     void stop(ActorRef actor);
 
-    ActorRef self();
+    ActorRef getSelf();
 
-    ActorRef sender();
+    ActorRef getSender();
 
     ActorRef parent();
+
+    void setSender(ActorRef sender);
 }

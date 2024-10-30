@@ -21,8 +21,8 @@ public abstract class Actor {
         return self;
     }
 
-    protected ActorRef sender() {
-        return context.sender();
+    protected ActorRef getSender() {
+        return context.getSender();
     }
 
     protected void preStart() {

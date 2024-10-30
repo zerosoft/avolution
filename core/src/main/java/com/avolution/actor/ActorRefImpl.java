@@ -1,38 +1,72 @@
 package com.avolution.actor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
+/**
+ * Actor的实现
+ */
 class ActorRefImpl implements ActorRef {
+
+    private Logger logger= LoggerFactory.getLogger(ActorRefImpl.class);
+
     private final String path;
-    private final StructuredTaskScope.ShutdownOnFailure scope;
+
     private final BlockingQueue<MessageEnvelope> mailbox;
+
     private final Actor actor;
+
     private final ActorContext context;
+
     private volatile boolean isAlive = true;
+
+    private final Lock lock = new ReentrantLock();
+
+    private final Condition condition = lock.newCondition();
 
     public ActorRefImpl(String path, Actor actor, ActorContext context) {
         this.path = path;
         this.mailbox = new LinkedBlockingQueue<>();
         this.actor = actor;
         this.context = context;
-        this.scope = new StructuredTaskScope.ShutdownOnFailure();
 
+        Thread.ofVirtual().name("Actor://"+path).start(this::processMessages);
         // Start message processing loop using virtual threads
-        Thread.startVirtualThread(this::processMessages);
+//        Thread.startVirtualThread(this::processMessages);
     }
 
     @Override
     public void tellMessage(Object message, ActorRef sender) {
         if (isAlive) {
-            mailbox.offer(new MessageEnvelope(message, sender));
+            boolean offer = mailbox.offer(new MessageEnvelope(message, sender));
+            if (offer){
+                wakeUpProcessor(); // Notify the message processor
+            }else {
+                logger.error("Mailbox is full, message dropped");
+            }
+
+        }
+    }
+
+    private void wakeUpProcessor() {
+        lock.lock();
+        try {
+            condition.signal(); // Notify the message processor
+        } finally {
+            lock.unlock();
         }
     }
 
     @Override
     public void forward(Object message, ActorContext context) {
-        tellMessage(message, context.sender());
+        tellMessage(message, context.getSender());
     }
 
     @Override
@@ -43,19 +77,18 @@ class ActorRefImpl implements ActorRef {
     private void processMessages() {
         while (isAlive) {
             try {
+                // 使用 take() 方法阻塞，直到有新消息
                 MessageEnvelope envelope = mailbox.take();
-                ((ActorContextImpl)context).setSender(envelope.sender());
+                ((ActorContextImpl) context).setSender(envelope.sender());
 
-                // Process message in a new virtual thread
-                scope.fork(() -> {
-                    try {
-                        actor.receive(envelope.message());
-                    } catch (Exception e) {
-                        // Basic error handling - in practice, would involve supervision strategy
-                        System.err.println("Error processing message: " + e.getMessage());
-                    }
-                    return null;
-                });
+                // 处理消息
+                try {
+                    actor.context().setSender(envelope.sender());
+                    actor.receive(envelope.message());
+                    logger.info("Message processed: " + envelope.message());
+                } catch (Exception e) {
+                  logger.error("Error processing message: " + e.getMessage());
+                }
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -64,13 +97,15 @@ class ActorRefImpl implements ActorRef {
         }
     }
 
+    private void handleError(Exception e) {
+        // Implement a more robust error handling mechanism
+        System.err.println("Error processing message: " + e.getMessage());
+        // Consider logging, retries, or other mechanisms here
+    }
+
+
     void stop() {
         isAlive = false;
-        try {
-            scope.shutdown();
-            scope.join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+
     }
 }

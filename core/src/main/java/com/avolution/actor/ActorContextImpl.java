@@ -4,11 +4,18 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * Actor 上下文的实现
+ */
 public class ActorContextImpl implements ActorContext {
+
     private final Map<String, ActorRef> children = new ConcurrentHashMap<>();
     private final ActorSystem system;
-    private final ActorRef self;
+
     private final ActorRef parent;
+
+    private final ActorRef self;
+
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
     private ActorRef sender;
 
@@ -36,15 +43,16 @@ public class ActorContextImpl implements ActorContext {
     }
 
     @Override
-    public ActorRef self() { return self; }
+    public ActorRef getSelf() { return self; }
 
     @Override
-    public ActorRef sender() { return sender; }
+    public ActorRef getSender() { return sender; }
 
     @Override
     public ActorRef parent() { return parent; }
 
-    void setSender(ActorRef sender) {
+    @Override
+    public void setSender(ActorRef sender) {
         this.sender = sender;
     }
 }

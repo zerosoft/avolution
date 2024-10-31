@@ -1,5 +1,7 @@
 package com.avolution.actor;
 
+import com.avolution.actor.core.Actor;
+
 import java.util.Arrays;
 
 public class Props {

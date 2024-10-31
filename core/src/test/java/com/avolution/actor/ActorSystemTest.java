@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
 
 public class ActorSystemTest {
 
-    ActorSystem system;
+    IActorSystem system;
 
     @BeforeEach
     void setUp() {
@@ -71,10 +71,10 @@ public class ActorSystemTest {
         ActorRef helloActor = system.actorOf(Props.create(HelloActor.class), "hello"+ 1);
 
         // 创建子Actor实例
-        ActorRef childActor = helloActor.createChild(Props.create(HelloActor.class), "child");
+//        ActorRef childActor = helloActor.createChild(Props.create(HelloActor.class), "child");
 
         // 发送消息给子Actor
-        childActor.tellMessage("Hello Child", helloActor);
+//        childActor.tellMessage("Hello Child", helloActor);
 
         // 等待一段时间后终止系统
         try {

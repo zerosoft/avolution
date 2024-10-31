@@ -19,20 +19,13 @@ public class ASK {
                 future.complete((T) message);
             }
 
-            @Override
-            public void forward(Object message, ActorContext context) {
-                // No implementation needed for this example
-            }
 
             @Override
             public String path() {
                 return null;
             }
 
-            @Override
-            public ActorRef createChild(Props props, String name) {
-                return null;
-            }
+
         });
 
         scheduler.schedule(() -> {

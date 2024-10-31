@@ -1,13 +1,14 @@
-package com.avolution.actor;
+package com.avolution.actor.impl;
+
+import com.avolution.actor.message.MessageEnvelope;
+import com.avolution.actor.context.ActorContext;
+import com.avolution.actor.core.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -15,9 +16,9 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Actor的实现
  */
-class ActorRefImpl implements ActorRef {
+public class ActorRefImpl implements ActorRef {
 
-    private Logger logger= LoggerFactory.getLogger(ActorRefImpl.class);
+    private Logger logger= LoggerFactory.getLogger(com.avolution.actor.ActorRefImpl.class);
 
     private final String path;
 
@@ -25,7 +26,7 @@ class ActorRefImpl implements ActorRef {
 
     private final Actor actor;
 
-    private final ActorContext context;
+    private ActorContext context;
 
     private volatile boolean isAlive = true;
 
@@ -38,10 +39,7 @@ class ActorRefImpl implements ActorRef {
         this.mailbox = new LinkedBlockingQueue<>();
         this.actor = actor;
         this.context = context;
-
         Thread.ofVirtual().name("Actor://"+path).start(this::processMessages);
-        // Start message processing loop using virtual threads
-//        Thread.startVirtualThread(this::processMessages);
     }
 
     @Override
@@ -66,25 +64,12 @@ class ActorRefImpl implements ActorRef {
         }
     }
 
-    @Override
-    public void forward(Object message, ActorContext context) {
-        tellMessage(message, context.getSender());
-    }
 
     @Override
     public String path() {
         return path;
     }
 
-    @Override
-    public ActorRef createChild(Props props, String name) {
-        return  context.actorOf(props, name);
-    }
-
-    @Override
-    public <T> CompletableFuture<T> ask(Object message, long timeout, TimeUnit unit) {
-        return new ASK().ask(this, message, timeout, unit);
-    }
 
     private void processMessages() {
         while (isAlive) {
@@ -97,7 +82,7 @@ class ActorRefImpl implements ActorRef {
                     actor.receive(envelope.message());
                     logger.info("Message processed: " + envelope.message());
                 } catch (Exception e) {
-                  logger.error("Error processing message: " + e.getMessage());
+                    logger.error("Error processing message: " + e.getMessage());
                 }
 
             } catch (InterruptedException e) {
@@ -113,9 +98,10 @@ class ActorRefImpl implements ActorRef {
         // Consider logging, retries, or other mechanisms here
     }
 
-
     void stop() {
         isAlive = false;
 
     }
+
+
 }

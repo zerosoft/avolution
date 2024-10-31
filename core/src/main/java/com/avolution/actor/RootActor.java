@@ -1,15 +1,17 @@
 package com.avolution.actor;
 
-public class RootActor extends Actor{
+import com.avolution.actor.core.Actor;
+import com.avolution.actor.core.IActorSystem;
 
-    private ActorSystem actorSystem;
+public class RootActor extends Actor {
 
-    public RootActor(ActorSystem actorSystem) {
+    private IActorSystem actorSystem;
+
+    public RootActor(IActorSystem actorSystem) {
         this.actorSystem=actorSystem;
     }
 
     @Override
     protected void receive(Object message) {
-        actorSystem.processMessage(message);
     }
 }

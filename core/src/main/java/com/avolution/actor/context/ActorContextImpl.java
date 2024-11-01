@@ -1,54 +1,100 @@
 package com.avolution.actor.context;
 
 import com.avolution.actor.core.*;
-import com.avolution.actor.impl.;
+import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.supervision.SupervisorStrategy;
-import com.avolution.actor.dispatch.Dispatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.io.File;
 
-public class ActorContextImpl implements ActorContext {
+public class ActorContextImpl<T> implements ActorContext<T> {
+    private static final Logger log = LoggerFactory.getLogger(ActorContextImpl.class);
 
-    private final IActorSystem system;
-
-    private final ActorRef self;
-    private final ActorRef parent;
-
-    private final Set<ActorRef> children;
-    private final AtomicReference<ActorRef> currentSender;
+    // 核心组件
+    private final ActorSystem system;
+    private final ActorRef<T> self;
+    private final ActorRef<?> parent;
+    private final Props<T> props;
     private final SupervisorStrategy supervisorStrategy;
-    private final Dispatcher dispatcher;
 
-    public ActorContextImpl(IActorSystem system,
-                          ActorRef self,
-                          ActorRef parent,
-                          SupervisorStrategy supervisorStrategy,
-                          Dispatcher dispatcher) {
+    // Actor状态管理
+    private final AtomicReference<ActorState> state;
+    private final Map<String, ActorRef<?>> children;
+    private final Set<ActorRef<?>> watchedActors;
+    private volatile Duration receiveTimeout;
+    private ScheduledFuture<?> receiveTimeoutTask;
+    private Envelope currentMessage;
+
+    public ActorContextImpl(ActorSystem system, ActorRef<T> self, ActorRef<?> parent, Props<T> props) {
         this.system = system;
         this.self = self;
         this.parent = parent;
-        this.supervisorStrategy = supervisorStrategy;
-        this.dispatcher = dispatcher;
-        this.children = ConcurrentHashMap.newKeySet();
-        this.currentSender = new AtomicReference<>();
+        this.props = props;
+        this.supervisorStrategy = props.supervisorStrategy();
+        
+        this.state = new AtomicReference<>(ActorState.NEW);
+        this.children = new ConcurrentHashMap<>();
+        this.watchedActors = ConcurrentHashMap.newKeySet();
     }
 
     @Override
-    public ActorRef self() {
+    public ActorRef<T> self() {
         return self;
     }
 
     @Override
-    public ActorRef parent() {
-        return parent;
+    public ActorRef<?> sender() {
+        return currentMessage != null ? currentMessage.getSender() : ActorRef.noSender();
     }
 
     @Override
-    public IActorSystem system() {
+    public ActorSystem system() {
         return system;
+    }
+
+    @Override
+    public ActorRef<T> spawn(Props<T> props, String name) {
+        validateChildName(name);
+        String path = self.path() + "/" + name;
+        ActorRef<T> child = system.actorOf(props, path);
+        children.put(name, child);
+        return child;
+    }
+
+    @Override
+    public void watch(ActorRef<?> other) {
+        watchedActors.add(other);
+        system.deathWatch().watch(self, other);
+    }
+
+    @Override
+    public void unwatch(ActorRef<?> other) {
+        watchedActors.remove(other);
+        system.deathWatch().unwatch(self, other);
+    }
+
+    @Override
+    public void stop(ActorRef<?> child) {
+        if (children.containsValue(child)) {
+            child.tell(PoisonPill.INSTANCE, self);
+            children.values().remove(child);
+        }
+    }
+
+    @Override
+    public void setReceiveTimeout(Duration timeout) {
+        this.receiveTimeout = timeout;
+        resetReceiveTimeoutTask();
+    }
+
+    @Override
+    public ActorRef<?> parent() {
+        return parent;
     }
 
     @Override
@@ -56,187 +102,33 @@ public class ActorContextImpl implements ActorContext {
         return supervisorStrategy;
     }
 
-    @Override
-    public ActorRef actorOf(Props props, String name) {
-        // 验证actor名称
-        validateActorName(name);
-        
-        // 构建完整路径
-        String childPath = buildChildPath(name);
-        
-        // 检查是否已存在
-        if (findChild(name) != null) {
-            throw new IllegalArgumentException("Child with name " + name + " already exists");
-        }
-
-        try {
-            // 创建子Actor
-            Actor childActor = props.newActor();
-            
-            // 创建子Actor的上下文
-            ActorContextImpl childContext = new ActorContextImpl(
-                system,
-                null, // 将在ActorRefImpl构造时设置
-                self,
-                childActor,
-                props.getSupervisorStrategy(),
-                dispatcher
-            );
-
-            // 创建ActorRef
-            ActorRefImpl childRef = new ActorRefImpl(
-                childPath,
-                childActor,
-                childContext,
-                dispatcher
-            );
-            
-            // 设置双向引用
-            childContext.setSelf(childRef);
-            childActor.setContext(childContext);
-
-            // 添加到子Actor集合
-            children.add(childRef);
-
-            // 调用生命周期方法
-            dispatcher.execute(() -> childActor.preStart());
-
-            return childRef;
-        } catch (Exception e) {
-            throw new ActorInitializationException("Failed to create child actor", e);
-        }
-    }
-
-    @Override
-    public void stop(ActorRef child) {
-        if (children.remove(child)) {
-            child.stop();
-            // 通知监督者
-            if (supervisorStrategy != null) {
-                handleChildTermination(child);
-            }
-        }
-    }
-
-    @Override
-    public ActorRef sender() {
-        return currentSender.get();
-    }
-
-    @Override
-    public Iterable<ActorRef> getChildren() {
-        return Set.copyOf(children);
-    }
-
-    @Override
-    public String path() {
-        return self.path();
-    }
-
     // 内部方法
-    public void setCurrentSender(ActorRef sender) {
-        currentSender.set(sender);
+    void setCurrentMessage(Envelope message) {
+        this.currentMessage = message;
     }
 
-    private void setSelf(ActorRef self) {
-        if (this.self != null) {
-            throw new IllegalStateException("Self reference already set");
+    private void resetReceiveTimeoutTask() {
+        if (receiveTimeoutTask != null) {
+            receiveTimeoutTask.cancel(true);
         }
-        // 使用反射设置final字段
-        try {
-            var field = this.getClass().getDeclaredField("self");
-            field.setAccessible(true);
-            field.set(this, self);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to set self reference", e);
-        }
-    }
-
-    public void handleChildFailure(ActorRef child, Throwable cause) {
-        if (supervisorStrategy != null) {
-            SupervisorStrategy.SupervisorDirective directive = 
-                supervisorStrategy.handle(cause);
-            
-            switch (directive) {
-                case RESUME:
-                    // 继续处理下一条消息
-                    break;
-                case RESTART:
-                    restartChild(child, cause);
-                    break;
-                case STOP:
-                    stop(child);
-                    break;
-                case ESCALATE:
-                    escalateFailure(cause);
-                    break;
-            }
+        if (receiveTimeout != null) {
+            receiveTimeoutTask = system.scheduler().schedule(
+                () -> self.tell(new ReceiveTimeout(), ActorRef.noSender()),
+                receiveTimeout.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
         }
     }
 
-    private void handleChildTermination(ActorRef child) {
-        // 可以添加额外的清理逻辑
-        children.remove(child);
-    }
-
-    private void restartChild(ActorRef child, Throwable cause) {
-        if (child instanceof ActorRefImpl actorRef) {
-            dispatcher.execute(() -> {
-                try {
-                    Actor childActor = actorRef.getActor();
-                    childActor.preRestart(cause);
-                    childActor.postRestart(cause);
-                } catch (Exception e) {
-                    escalateFailure(e);
-                }
-            });
+    private void validateChildName(String name) {
+        if (children.containsKey(name)) {
+            throw new IllegalArgumentException("Child with name '" + name + "' already exists");
         }
     }
 
-    private void escalateFailure(Throwable cause) {
-        if (parent != null) {
-            parent.tell(new Failed(cause, self), self);
-        } else {
-            // 根actor处理失败
-            system.stop(self);
-        }
+    private enum ActorState {
+        NEW, STARTING, STARTED, STOPPING, STOPPED
     }
 
-    private ActorRef findChild(String name) {
-        String childPath = buildChildPath(name);
-        return children.stream()
-            .filter(child -> child.path().equals(childPath))
-            .findFirst()
-            .orElse(null);
-    }
-
-    private String buildChildPath(String name) {
-        return path() + File.separator + name;
-    }
-
-    private void validateActorName(String name) {
-        if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("Actor name must not be empty");
-        }
-        if (name.contains("/") || name.contains(":")) {
-            throw new IllegalArgumentException("Actor name must not contain '/' or ':'");
-        }
-    }
-
-    // 内部消息类
-    public static class Failed {
-        public final Throwable cause;
-        public final ActorRef child;
-
-        public Failed(Throwable cause, ActorRef child) {
-            this.cause = cause;
-            this.child = child;
-        }
-    }
-
-    public static class ActorInitializationException extends RuntimeException {
-        public ActorInitializationException(String message, Throwable cause) {
-            super(message, cause);
-        }
-    }
-} 
+    private static class ReceiveTimeout {}
+}

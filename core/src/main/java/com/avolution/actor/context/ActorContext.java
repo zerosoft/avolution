@@ -1,63 +1,63 @@
 package com.avolution.actor.context;
 
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.IActorSystem;
-import com.avolution.actor.core.Props;
+import com.avolution.actor.core.*;
 import com.avolution.actor.supervision.SupervisorStrategy;
 
-public interface ActorContext {
+import java.time.Duration;
+
+/**
+ * Actor上下文接口，提供Actor运行时环境
+ * @param <T> Actor处理的消息类型
+ */
+public interface ActorContext<T> {
     /**
-     * 获取父Actor上下文
+     * 获取当前Actor的引用
      */
-    ActorContext getParent();
+    ActorRef<T> self();
     
     /**
-     * 获取当前Actor的ActorRef
+     * 获取当前消息的发送者
      */
-    ActorRef self();
-    
-    /**
-     * 创建子Actor
-     */
-    ActorRef actorOf(Props props, String name);
-    
-    /**
-     * 停止指定的Actor
-     */
-    void stop(ActorRef actor);
-    
-    /**
-     * 获取消息发送者
-     */
-    ActorRef sender();
+    ActorRef<?> sender();
     
     /**
      * 获取Actor系统
      */
-    IActorSystem system();
+    ActorSystem system();
+    
+    /**
+     * 创建子Actor
+     */
+    ActorRef<T> spawn(Props props, String name);
+    
+    /**
+     * 监视另一个Actor
+     */
+    void watch(ActorRef<?> other);
+    
+    /**
+     * 停止监视另一个Actor
+     */
+    void unwatch(ActorRef<?> other);
+    
+    /**
+     * 停止子Actor
+     */
+    void stop(ActorRef<?> child);
+    
+    /**
+     * 设置接收超时
+     */
+    void setReceiveTimeout(Duration timeout);
+    
+    /**
+     * 获取父Actor
+     */
+    ActorRef<?> parent();
     
     /**
      * 获取监督策略
      */
     SupervisorStrategy supervisorStrategy();
-    
-    /**
-     * 获取子Actor
-     */
-    Iterable<ActorRef> getChildren();
-    
-    /**
-     * 获取Actor路径
-     */
-    String path();
-    
-    /**
-     * 监视另一个Actor
-     */
-    void watch(ActorRef actor);
-    
-    /**
-     * 取消监视另一个Actor
-     */
-    void unwatch(ActorRef actor);
-} 
+}
+

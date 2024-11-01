@@ -1,7 +1,6 @@
 package com.avolution.actor.supervision;
 
 import java.time.Duration;
-import java.util.function.Function;
 
 public interface SupervisorStrategy {
     /**

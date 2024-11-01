@@ -2,11 +2,16 @@ package com.avolution.actor.impl;
 
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.message.DeadLetter;
+import com.avolution.actor.message.Message;
+
+import java.time.Duration;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 public class DeadLetterActorRef implements ActorRef {
+
     public static final DeadLetterActorRef INSTANCE = new DeadLetterActorRef();
     
     private final List<Consumer<DeadLetter>> subscribers = new CopyOnWriteArrayList<>();
@@ -26,8 +31,28 @@ public class DeadLetterActorRef implements ActorRef {
     }
 
     @Override
+    public void tell(Message<?> message, ActorRef sender) {
+
+    }
+
+    @Override
+    public <T> CompletionStage<T> ask(Message<?> message, Duration timeout) {
+        return null;
+    }
+
+    @Override
     public String path() {
         return DEAD_LETTERS_PATH;
+    }
+
+    @Override
+    public String name() {
+        return "";
+    }
+
+    @Override
+    public boolean isTerminated() {
+        return false;
     }
 
     @Override

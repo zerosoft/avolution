@@ -77,7 +77,7 @@ public class ActorSystem {
             AbstractActor<T> actor = props.newActor();
 
             // 创建ActorRef
-            ActorRef<T> actorRef = new ActorRefImpl<>(path, actor);
+            ActorRef<T> actorRef = actor.context().self();
 
             // 创建ActorContext
             ActorContext<T> context = new ActorContext<>(

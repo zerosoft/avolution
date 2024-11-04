@@ -1,6 +1,5 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.config.ActorConfig;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.dispatch.Dispatcher;
 import com.avolution.actor.router.RouterConfig;
@@ -18,7 +17,6 @@ import java.util.function.Function;
 public class Props<T> {
     private final Class<? extends AbstractActor<T>> actorClass;
     private final Object[] args;
-    private final ActorConfig config;
     private final SupervisorStrategy supervisorStrategy;
     private final Optional<RouterConfig> routerConfig;
     private final Optional<Function<ActorContext<T>, AbstractActor<T>>> creator;
@@ -27,7 +25,6 @@ public class Props<T> {
     private Props(Builder<T> builder) {
         this.actorClass = builder.actorClass;
         this.args = builder.args;
-        this.config = builder.config;
         this.supervisorStrategy = builder.supervisorStrategy;
         this.routerConfig = Optional.ofNullable(builder.routerConfig);
         this.creator = Optional.ofNullable(builder.creator);
@@ -49,7 +46,6 @@ public class Props<T> {
     public static class Builder<T> {
         private Class<? extends AbstractActor<T>> actorClass;
         private Object[] args = new Object[0];
-        private ActorConfig config = ActorConfig.defaultConfig();
         private SupervisorStrategy supervisorStrategy = new DefaultSupervisorStrategy();
         private RouterConfig routerConfig;
         private Function<ActorContext<T>, AbstractActor<T>> creator;
@@ -65,10 +61,6 @@ public class Props<T> {
             return this;
         }
 
-        public Builder<T> withConfig(ActorConfig config) {
-            this.config = config;
-            return this;
-        }
 
         public Builder<T> withSupervisorStrategy(SupervisorStrategy strategy) {
             this.supervisorStrategy = strategy;
@@ -102,22 +94,16 @@ public class Props<T> {
             if (creator != null && actorClass != null) {
                 throw new IllegalArgumentException("Cannot specify both actorClass and creator");
             }
-            Objects.requireNonNull(config, "config cannot be null");
             Objects.requireNonNull(supervisorStrategy, "supervisorStrategy cannot be null");
         }
     }
 
-    // Getters
     public Class<? extends AbstractActor<T>> getActorClass() {
         return actorClass;
     }
 
     public Object[] getArgs() {
         return args;
-    }
-
-    public ActorConfig getConfig() {
-        return config;
     }
 
     public SupervisorStrategy supervisorStrategy() {

@@ -3,8 +3,8 @@ package com.avolution.actor.supervision;
 import java.time.Duration;
 
 public class DefaultSupervisorStrategy implements SupervisorStrategy {
-    public static final DefaultSupervisorStrategy INSTANCE = 
-        new DefaultSupervisorStrategy();
+    public static final DefaultSupervisorStrategy INSTANCE =
+            new DefaultSupervisorStrategy();
 
     @Override
     public Directive handle(Throwable cause) {
@@ -26,4 +26,4 @@ public class DefaultSupervisorStrategy implements SupervisorStrategy {
     public Duration getWithinTimeRange() {
         return Duration.ofMinutes(1);
     }
-} 
+}

@@ -2,107 +2,100 @@ package com.avolution.actor.mailbox;
 
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.message.Envelope;
-import com.avolution.actor.config.MailboxConfig;
+import com.avolution.actor.message.MessageHandler;
 
 import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Actor消息邮箱实现
  */
 public class Mailbox {
     private final Queue<Envelope> queue;
-
-    private final MailboxConfig config;
+    private final Queue<Envelope> systemQueue;
     private final MailboxMetrics metrics;
 
     private final AtomicBoolean suspended;
     private final AtomicBoolean processing;
-    
-    // 系统消息队列（优先级高于普通消息）
-    private final Queue<Envelope> systemQueue;
+    private final AtomicInteger unprocessedMessages;
 
-    public Mailbox(MailboxConfig config) {
-        this.config = config;
+    private final int throughput;
+    private volatile boolean closed;
+
+    public Mailbox() {
+        this(100); // 默认吞吐量
+    }
+
+    public Mailbox(int throughput) {
         this.queue = new ConcurrentLinkedQueue<>();
         this.systemQueue = new ConcurrentLinkedQueue<>();
+
         this.metrics = new MailboxMetrics();
+
         this.suspended = new AtomicBoolean(false);
         this.processing = new AtomicBoolean(false);
+
+        this.unprocessedMessages = new AtomicInteger(0);
+        this.throughput = throughput;
+        this.closed = false;
     }
 
     /**
      * 入队消息
      */
     public boolean enqueue(Envelope envelope) {
-        if (suspended.get()) {
+        if (closed || suspended.get()) {
             metrics.messageRejected();
             return false;
         }
 
-        Queue<Envelope> targetQueue = envelope.isSystemMessage() 
-            ? systemQueue 
-            : queue;
-
-        if (targetQueue.size() >= config.getCapacity()) {
-            handleOverflow(envelope);
-            return false;
+        boolean success;
+        if (envelope.isSystemMessage()) {
+            success = systemQueue.offer(envelope);
+        } else {
+            success = queue.offer(envelope);
         }
 
-        try {
-            targetQueue.offer(envelope);
+        if (success) {
+            unprocessedMessages.incrementAndGet();
             metrics.messageEnqueued();
-            return true;
-        } catch (Exception e) {
-            metrics.messageRejected();
-            return false;
         }
+        return success;
     }
 
     /**
      * 处理队列中的消息
      */
-    public void process(MessageProcessor processor) {
-        if (suspended.get() || !processing.compareAndSet(false, true)) {
-            return;
-        }
-
-        try {
-            // 首先处理系统消息
-            processQueue(systemQueue, processor);
-            
-            // 然后处理普通消息
-            processQueue(queue, processor);
-            
-        } finally {
-            processing.set(false);
-        }
-    }
-
-    private void processQueue(Queue<Envelope> queue, MessageProcessor processor) {
-        int processedCount = 0;
-        long startTime = System.nanoTime();
-
-        while (!suspended.get() && 
-               processedCount < config.getBatchSize() && 
-               !queue.isEmpty()) {
-            
-            Envelope envelope = queue.poll();
-            if (envelope != null) {
-                try {
-                    processor.process(envelope);
-                    metrics.messageProcessed();
-                    processedCount++;
-                } catch (Exception e) {
-                    metrics.messageProcessingFailed();
-                    handleProcessingError(envelope, e);
+    public void process(MessageHandler handler) {
+        if (processing.compareAndSet(false, true)) {
+            try {
+                int processed = 0;
+                while (processed < throughput && !suspended.get()) {
+                    // 优先处理系统消息
+                    Envelope msg = systemQueue.poll();
+                    if (msg == null) {
+                        msg = queue.poll();
+                    }
+                    if (msg == null){
+                        break;
+                    }
+                    try {
+                        long nanoTime = System.nanoTime();
+                        handler.handle(msg);
+                        metrics.messageProcessed(System.nanoTime()-nanoTime);
+                    } catch (Exception e) {
+                        metrics.messageFailure();
+//                        handler.handleFailure(msg, e);
+                    } finally {
+                        unprocessedMessages.decrementAndGet();
+                        processed++;
+                    }
                 }
+            } finally {
+                processing.set(false);
             }
-        }
-
-        if (processedCount > 0) {
-            metrics.batchProcessed(System.nanoTime() - startTime);
         }
     }
 
@@ -111,6 +104,7 @@ public class Mailbox {
      */
     public void suspend() {
         suspended.set(true);
+        metrics.mailboxSuspended();
     }
 
     /**
@@ -118,22 +112,25 @@ public class Mailbox {
      */
     public void resume() {
         suspended.set(false);
+        metrics.mailboxResumed();
     }
 
     /**
      * 清空邮箱
      */
     public void clear() {
+        int cleared = unprocessedMessages.get();
         queue.clear();
         systemQueue.clear();
-        metrics.reset();
+        unprocessedMessages.set(0);
+        metrics.messagesCleared(cleared);
     }
 
     /**
      * 获取当前队列大小
      */
     public int size() {
-        return queue.size() + systemQueue.size();
+        return unprocessedMessages.get();
     }
 
     /**
@@ -143,24 +140,19 @@ public class Mailbox {
         return metrics;
     }
 
-    private void handleOverflow(Envelope envelope) {
-        metrics.messageOverflowed();
-        switch (config.getOverflowStrategy()) {
-            case DROP_NEW -> metrics.messageDropped();
-            case DROP_OLD -> {
-                queue.poll(); // 移除最老的消息
-                enqueue(envelope); // 重试入队
-            }
-            case DROP_BUFFER -> {
-                clear();
-                enqueue(envelope);
-            }
-        }
+    /**
+     * 关闭邮箱
+     */
+    public void close() {
+        closed = true;
+        clear();
     }
 
-    private void handleProcessingError(Envelope envelope, Exception error) {
-        if (config.getRetryStrategy().shouldRetry(envelope)) {
-            enqueue(envelope); // 重试
-        }
+    private void scheduleProcessing(MessageHandler handler) {
+        CompletableFuture.runAsync(() -> process(handler));
     }
-} 
+
+    public boolean hasMessages() {
+        return !systemQueue.isEmpty() || !queue.isEmpty();
+    }
+}

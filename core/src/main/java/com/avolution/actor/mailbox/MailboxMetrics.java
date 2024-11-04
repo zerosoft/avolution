@@ -9,23 +9,30 @@ import java.util.concurrent.atomic.LongAdder;
  * 邮箱性能指标收集器
  */
 public class MailboxMetrics {
-    // 消息计数器
+    // 基础计数器
     private final LongAdder messagesEnqueued = new LongAdder();
     private final LongAdder messagesProcessed = new LongAdder();
-    private final LongAdder messagesDropped = new LongAdder();
-    private final LongAdder messagesRejected = new LongAdder();
     private final LongAdder messagesFailed = new LongAdder();
-    private final LongAdder messagesOverflowed = new LongAdder();
+    private final LongAdder messagesRejected = new LongAdder();
+    private final LongAdder systemMessagesProcessed = new LongAdder();
     
-    // 处理时间统计
+    // 性能指标
     private final LongAdder processingTimeNanos = new LongAdder();
     private final AtomicLong maxProcessingTimeNanos = new AtomicLong();
     private final LongAdder batchesProcessed = new LongAdder();
+    
+    // 邮箱状态计数
+    private final LongAdder suspensionCount = new LongAdder();
+    private final LongAdder resumeCount = new LongAdder();
+    private final LongAdder clearCount = new LongAdder();
+    private final LongAdder messagesCleared = new LongAdder();
     
     // 时间戳
     private final Instant startTime;
     private volatile Instant lastProcessedTime;
     private volatile Instant lastFailureTime;
+    private volatile Instant lastSuspendedTime;
+    private volatile Instant lastResumedTime;
 
     public MailboxMetrics() {
         this.startTime = Instant.now();
@@ -36,150 +43,93 @@ public class MailboxMetrics {
         messagesEnqueued.increment();
     }
 
-    public void messageProcessed() {
+    public void messageProcessed(long processingTimeNanos) {
         messagesProcessed.increment();
+        this.processingTimeNanos.add(processingTimeNanos);
+        maxProcessingTimeNanos.accumulateAndGet(processingTimeNanos, Math::max);
         lastProcessedTime = Instant.now();
     }
 
-    public void messageDropped() {
-        messagesDropped.increment();
+    public void systemMessageProcessed(long processingTimeNanos) {
+        systemMessagesProcessed.increment();
+        messageProcessed(processingTimeNanos);
+    }
+
+    public void messageFailure() {
+        messagesFailed.increment();
+        lastFailureTime = Instant.now();
     }
 
     public void messageRejected() {
         messagesRejected.increment();
     }
 
-    public void messageProcessingFailed() {
-        messagesFailed.increment();
-        lastFailureTime = Instant.now();
+    public void mailboxSuspended() {
+        suspensionCount.increment();
+        lastSuspendedTime = Instant.now();
     }
 
-    public void messageOverflowed() {
-        messagesOverflowed.increment();
+    public void mailboxResumed() {
+        resumeCount.increment();
+        lastResumedTime = Instant.now();
     }
 
-    public void batchProcessed(long processingTimeNanos) {
-        this.processingTimeNanos.add(processingTimeNanos);
-        maxProcessingTimeNanos.accumulateAndGet(
-            processingTimeNanos,
-            Math::max
-        );
+    public void messagesCleared(int count) {
+        clearCount.increment();
+        messagesCleared.add(count);
+    }
+
+    public void batchCompleted() {
         batchesProcessed.increment();
     }
 
-    // 重置方法
-    public void reset() {
-        messagesEnqueued.reset();
-        messagesProcessed.reset();
-        messagesDropped.reset();
-        messagesRejected.reset();
-        messagesFailed.reset();
-        messagesOverflowed.reset();
-        processingTimeNanos.reset();
-        maxProcessingTimeNanos.set(0);
-        batchesProcessed.reset();
-    }
-
     // 获取统计信息
-    public long getMessagesEnqueued() {
-        return messagesEnqueued.sum();
-    }
-
-    public long getMessagesProcessed() {
-        return messagesProcessed.sum();
-    }
-
-    public long getMessagesDropped() {
-        return messagesDropped.sum();
-    }
-
-    public long getMessagesRejected() {
-        return messagesRejected.sum();
-    }
-
-    public long getMessagesFailed() {
-        return messagesFailed.sum();
-    }
-
-    public long getMessagesOverflowed() {
-        return messagesOverflowed.sum();
-    }
-
-    public long getBatchesProcessed() {
-        return batchesProcessed.sum();
-    }
-
-    public Duration getUptime() {
-        return Duration.between(startTime, Instant.now());
-    }
-
-    public Instant getLastProcessedTime() {
-        return lastProcessedTime;
-    }
-
-    public Instant getLastFailureTime() {
-        return lastFailureTime;
-    }
-
-    // 计算派生指标
-    public double getAverageProcessingTimeMs() {
-        long batches = batchesProcessed.sum();
-        return batches > 0 
-            ? (processingTimeNanos.sum() / batches) / 1_000_000.0 
-            : 0.0;
-    }
-
-    public double getMaxProcessingTimeMs() {
-        return maxProcessingTimeNanos.get() / 1_000_000.0;
-    }
-
-    public double getMessagesPerSecond() {
-        double uptimeSeconds = getUptime().toSeconds();
-        return uptimeSeconds > 0 
-            ? messagesProcessed.sum() / uptimeSeconds 
-            : 0.0;
-    }
-
-    public double getFailuresPerSecond() {
-        double uptimeSeconds = getUptime().toSeconds();
-        return uptimeSeconds > 0 
-            ? messagesFailed.sum() / uptimeSeconds 
-            : 0.0;
-    }
-
-    public double getDropRate() {
-        long total = messagesEnqueued.sum();
-        return total > 0 
-            ? (double) messagesDropped.sum() / total 
-            : 0.0;
-    }
-
-    public double getSuccessRate() {
-        long total = messagesProcessed.sum() + messagesFailed.sum();
-        return total > 0 
-            ? (double) messagesProcessed.sum() / total 
-            : 0.0;
-    }
-
-    // 获取快照
     public MetricsSnapshot getSnapshot() {
         return new MetricsSnapshot(
             messagesEnqueued.sum(),
             messagesProcessed.sum(),
-            messagesDropped.sum(),
-            messagesRejected.sum(),
+            systemMessagesProcessed.sum(),
             messagesFailed.sum(),
-            messagesOverflowed.sum(),
+            messagesRejected.sum(),
             getAverageProcessingTimeMs(),
             getMaxProcessingTimeMs(),
             getMessagesPerSecond(),
-            getFailuresPerSecond(),
-            getDropRate(),
-            getSuccessRate(),
+            getFailureRate(),
+            suspensionCount.sum(),
+            resumeCount.sum(),
+            clearCount.sum(),
+            messagesCleared.sum(),
             getUptime(),
             lastProcessedTime,
-            lastFailureTime
+            lastFailureTime,
+            lastSuspendedTime,
+            lastResumedTime
         );
+    }
+
+    // 计算派生指标
+    private double getAverageProcessingTimeMs() {
+        long processed = messagesProcessed.sum();
+        return processed > 0 ? 
+            (processingTimeNanos.sum() / processed) / 1_000_000.0 : 0.0;
+    }
+
+    private double getMaxProcessingTimeMs() {
+        return maxProcessingTimeNanos.get() / 1_000_000.0;
+    }
+
+    private double getMessagesPerSecond() {
+        double uptime = getUptime().toSeconds();
+        return uptime > 0 ? messagesProcessed.sum() / uptime : 0.0;
+    }
+
+    private double getFailureRate() {
+        long total = messagesProcessed.sum() + messagesFailed.sum();
+        return total > 0 ? (double) messagesFailed.sum() / total : 0.0;
+    }
+
+    private Duration getUptime() {
+        return Duration.between(startTime, Instant.now());
     }
 
     /**
@@ -188,59 +138,42 @@ public class MailboxMetrics {
     public record MetricsSnapshot(
         long messagesEnqueued,
         long messagesProcessed,
-        long messagesDropped,
-        long messagesRejected,
+        long systemMessagesProcessed,
         long messagesFailed,
-        long messagesOverflowed,
+        long messagesRejected,
         double averageProcessingTimeMs,
         double maxProcessingTimeMs,
         double messagesPerSecond,
-        double failuresPerSecond,
-        double dropRate,
-        double successRate,
+        double failureRate,
+        long suspensionCount,
+        long resumeCount,
+        long clearCount,
+        long messagesCleared,
         Duration uptime,
         Instant lastProcessedTime,
-        Instant lastFailureTime
+        Instant lastFailureTime,
+        Instant lastSuspendedTime,
+        Instant lastResumedTime
     ) {
         @Override
         public String toString() {
             return String.format("""
                 Mailbox Metrics:
-                Messages:
-                  - Enqueued: %d
-                  - Processed: %d
-                  - Dropped: %d
-                  - Rejected: %d
-                  - Failed: %d
-                  - Overflowed: %d
-                Performance:
-                  - Avg Processing Time: %.2f ms
-                  - Max Processing Time: %.2f ms
-                  - Throughput: %.2f msg/sec
-                  - Failure Rate: %.2f failures/sec
-                Rates:
-                  - Drop Rate: %.2f%%
-                  - Success Rate: %.2f%%
-                Timing:
-                  - Uptime: %s
-                  - Last Processed: %s
-                  - Last Failure: %s
+                Messages: enqueued=%d, processed=%d, failed=%d, rejected=%d
+                System Messages: processed=%d
+                Performance: avg=%.2fms, max=%.2fms, throughput=%.2f msg/s
+                Failure Rate: %.2f%%
+                Status Changes: suspensions=%d, resumes=%d, clears=%d (total cleared=%d)
+                Uptime: %s
+                Last Events: processed=%s, failed=%s, suspended=%s, resumed=%s
                 """,
-                messagesEnqueued,
-                messagesProcessed,
-                messagesDropped,
-                messagesRejected,
-                messagesFailed,
-                messagesOverflowed,
-                averageProcessingTimeMs,
-                maxProcessingTimeMs,
-                messagesPerSecond,
-                failuresPerSecond,
-                dropRate * 100,
-                successRate * 100,
+                messagesEnqueued, messagesProcessed, messagesFailed, messagesRejected,
+                systemMessagesProcessed,
+                averageProcessingTimeMs, maxProcessingTimeMs, messagesPerSecond,
+                failureRate * 100,
+                suspensionCount, resumeCount, clearCount, messagesCleared,
                 uptime,
-                lastProcessedTime != null ? lastProcessedTime : "never",
-                lastFailureTime != null ? lastFailureTime : "never"
+                lastProcessedTime, lastFailureTime, lastSuspendedTime, lastResumedTime
             );
         }
     }

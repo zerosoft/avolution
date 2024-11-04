@@ -1,11 +1,9 @@
 package com.avolution.actor.core;
 
+
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.lifecycle.LifecycleState;
-import com.avolution.actor.message.Envelope;
-
-import java.time.Duration;
-import java.util.concurrent.CompletionStage;
+import  com.avolution.actor.message.Envelope;
 
 /**
  * Actor抽象基类，提供基础实现
@@ -14,6 +12,7 @@ import java.util.concurrent.CompletionStage;
 public abstract class AbstractActor<T> implements ActorRef<T> {
 
     protected ActorContext context;
+
     protected LifecycleState lifecycleState = LifecycleState.NEW;
 
     /**
@@ -21,7 +20,7 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
      *
      * @param message 接收到的消息
      */
-    protected abstract void onReceive(T message);
+    public abstract void onReceive(Object message);
 
     /**
      * 获取Actor上下文
@@ -31,16 +30,14 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
     }
 
     @Override
-    public void tell(T message, ActorRef<?> sender) {
+    public void tell(T message, ActorRef sender) {
         if (!isTerminated()) {
-            context.tell(new Envelope(message, sender, context.self()), sender);
+            Envelope.Builder builder = Envelope.newBuilder();
+            builder.message(message);
+            context.tell(builder.build());
         }
     }
 
-    @Override
-    public <R> CompletionStage<R> ask(T message, Duration timeout) {
-        return context.ask(message, timeout);
-    }
 
     @Override
     public String path() {
@@ -55,23 +52,25 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
 
     @Override
     public boolean isTerminated() {
-        return lifecycleState == LifecycleState.TERMINATED;
+        return lifecycleState == LifecycleState.STOPPED;
     }
 
     // 生命周期回调方法
-    protected void preStart() {
+    public void preStart() {
     }
 
-    protected void postStop() {
+    public void postStop() {
     }
 
-    protected void preRestart(Throwable reason) {
+    public void preRestart(Throwable reason) {
+
     }
 
-    protected void postRestart(Throwable reason) {
+    public void postRestart(Throwable reason) {
+
     }
 
-    void initialize(ActorContext context) {
+    public void initialize(ActorContext context) {
         this.context = context;
         this.lifecycleState = LifecycleState.STARTED;
     }

@@ -26,7 +26,7 @@ public class ConsistentHashRouterConfig extends RouterConfig {
         if (routees.isEmpty()) {
             throw new IllegalStateException("No routees available");
         }
-        Object key = hashMapping.apply(message.getMessage());
+        Object key = hashMapping.apply(message.message());
         int hash = key.hashCode();
         // 实现一致性哈希选择逻辑
         return routees.get(Math.abs(hash % routees.size()));

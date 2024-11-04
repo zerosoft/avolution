@@ -1,6 +1,5 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.impl.DeadLetterActorRef;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
@@ -17,15 +16,6 @@ public interface ActorRef<T> {
      * @param sender 消息发送者
      */
     void tell(T message, ActorRef sender);
-
-    /**
-     * 发送消息并等待响应
-     *
-     * @param message 消息内容
-     * @param timeout 超时时间
-     * @return 响应的Future
-     */
-    <T> CompletionStage<T> ask(T message, Duration timeout);
 
     /**
      * 获取Actor的路径
@@ -54,6 +44,6 @@ public interface ActorRef<T> {
      * @return 空发送者
      */
     static ActorRef noSender() {
-        return DeadLetterActorRef.INSTANCE;
+        return null;
     }
 }

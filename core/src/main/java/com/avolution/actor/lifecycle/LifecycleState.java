@@ -23,4 +23,4 @@ public enum LifecycleState {
      * 已停止状态
      */
     STOPPED
-} 
+}

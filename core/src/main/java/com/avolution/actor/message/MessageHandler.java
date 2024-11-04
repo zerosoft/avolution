@@ -5,11 +5,11 @@ package com.avolution.actor.message;
  * @param <T> 消息类型
  */
 @FunctionalInterface
-public interface MessageHandler<T> {
+public interface MessageHandler {
     /**
      * 处理消息
      * @param message 消息内容
      * @throws Exception 处理过程中可能抛出的异常
      */
-    void handle(T message) throws Exception;
+    void handle(Envelope message) throws Exception;
 } 

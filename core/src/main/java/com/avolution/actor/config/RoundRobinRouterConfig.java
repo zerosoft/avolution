@@ -6,7 +6,6 @@ import com.avolution.actor.router.RouterConfig;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 
 /**
  * 轮询路由

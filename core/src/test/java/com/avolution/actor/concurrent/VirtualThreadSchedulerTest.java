@@ -113,7 +113,8 @@ class VirtualThreadSchedulerTest {
             }
             latch.countDown();
         }, 0, TimeUnit.MILLISECONDS);
-        
+
+        TimeUnit.SECONDS.sleep(1L);
         scheduler.shutdown();
         assertTrue(scheduler.awaitTermination(1, TimeUnit.SECONDS));
         assertEquals(0, latch.getCount());

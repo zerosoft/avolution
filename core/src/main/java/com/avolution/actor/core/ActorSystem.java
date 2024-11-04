@@ -6,6 +6,7 @@ import com.avolution.actor.message.Envelope;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.system.actor.*;
+import com.avolution.actor.exception.ActorCreationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,9 +30,9 @@ public class ActorSystem {
     private final CompletableFuture<Void> terminationFuture;
 
     // 系统Actor
-    private  ActorRef<?> deadLetters;
-    private  ActorRef<?> systemGuardian;
-    private  ActorRef<?> userGuardian;
+    private  ActorRef deadLetters;
+    private  ActorRef systemGuardian;
+    private  ActorRef userGuardian;
 
     public ActorSystem(String name) {
         this.name = name;
@@ -58,17 +59,49 @@ public class ActorSystem {
     }
 
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {
-//        checkRunning();
+        // 验证系统状态和Actor名称
+        if (state.get() != SystemState.RUNNING) {
+            throw new IllegalStateException("Actor system is not running");
+        }
 //        validateActorName(name);
 
-//        String path = "/user/" + name;
-//        ActorRef<T> actor = props.create(this, path);
-//        ActorContext<T> context = new ActorContext<>(this, actor, userGuardian, props);
-//
-//        actors.put(path, actor);
-//        contexts.put(path, context);
+        String path = "/user/" + name;
 
-        return null;
+        // 检查是否已存在
+        if (actors.containsKey(path)) {
+            throw new ActorCreationException("Actor '" + name + "' already exists");
+        }
+
+        try {
+            // 创建Actor实例
+            AbstractActor<T> actor = props.newActor();
+
+            // 创建ActorRef
+            ActorRef<T> actorRef = new ActorRefImpl<>(path, actor);
+
+            // 创建ActorContext
+            ActorContext<T> context = new ActorContext<>(
+                    this,
+                    actorRef,
+                    userGuardian,
+                    props,
+                    actor
+            );
+
+            // 注册Actor
+            actors.put(path, actorRef);
+            contexts.put(path, context);
+
+            // 初始化Actor
+            actor.initialize(context);
+
+            log.debug("Created actor: {}", path);
+            return actorRef;
+
+        } catch (Exception e) {
+            log.error("Failed to create actor: {}", name, e);
+            throw new ActorCreationException("Failed to create actor: " + name, e);
+        }
     }
 
     private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass, String path) {

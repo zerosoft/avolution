@@ -65,9 +65,6 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         }
     }
 
-
-
-
     @Override
     public String path() {
         return context.getPath();
@@ -84,23 +81,44 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         return lifecycleState == LifecycleState.STOPPED;
     }
 
-    // Actor正式初始换之前的
+    /**
+     * Actor正式初始换之前的
+     * 生命周期回调方法
+     */
     public void preStart() {
-
+        // 在Actor启动前执行的操作
     }
-    // 生命周期回调方法
+
+    /**
+     * 生命周期回调方法
+     * 在Actor停止后执行的操作
+     */
     public void postStop() {
-
+        // 在Actor停止后执行的操作
     }
 
+    /**
+     * 生命周期回调方法
+     * 在Actor重启前执行的操作
+     * @param reason 重启原因
+     */
     public void preRestart(Throwable reason) {
-
+        // 在Actor重启前执行的操作
     }
 
+    /**
+     * 生命周期回调方法
+     * 在Actor重启后执行的操作
+     * @param reason 重启原因
+     */
     public void postRestart(Throwable reason) {
-
+        // 在Actor重启后执行的操作
     }
 
+    /**
+     * 初始化Actor上下文
+     * @param context Actor上下文
+     */
     public void initialize(ActorContext context) {
         this.context = context;
         this.lifecycleState = LifecycleState.STARTED;

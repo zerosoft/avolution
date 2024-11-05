@@ -63,11 +63,26 @@ public class ActorSystem {
         this.deadLetters = createSystemActor(DeadLetterActor.class, "/system/deadLetters");
     }
 
+    /**
+     * 创建Actor
+     * @param props Actor属性
+     * @param name Actor名称
+     * @param <T> Actor类型
+     * @return Actor引用
+     */
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {
         return actorOf(props, name, null);
     }
 
-    public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorRef actorContextRef) {
+    /**
+     * 创建Actor
+     * @param props Actor属性
+     * @param name Actor名称
+     * @param actorContextRef Actor上下文引用
+     * @param <T> Actor类型
+     * @return Actor引用
+     */
+    public <T> ActorRef<T> actorOf(Props<T> props, String name, ActorRef actorContextRef) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
@@ -89,7 +104,7 @@ public class ActorSystem {
             ActorContext context = new ActorContext(path,
                     this,
                     actor,
-                    actorContextRef!=null?actorContextRef:systemGuardian,
+                    actorContextRef != null ? actorContextRef : systemGuardian,
                     props
             );
 
@@ -109,10 +124,19 @@ public class ActorSystem {
         }
     }
 
-    public  ActorContext getContext(String path) {
+    /**
+     * 获取Actor上下文
+     * @param path Actor路径
+     * @return Actor上下文
+     */
+    public ActorContext getContext(String path) {
         return contexts.get(path);
     }
 
+    /**
+     * 停止Actor
+     * @param actor Actor引用
+     */
     public void stop(ActorRef actor) {
         String path = actor.path();
         actors.remove(path);
@@ -124,6 +148,10 @@ public class ActorSystem {
 //        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
     }
 
+    /**
+     * 终止Actor系统
+     * @return 终止的CompletableFuture
+     */
     public CompletableFuture<Void> terminate() {
 //        if (state.compareAndSet(SystemState.RUNNING, SystemState.TERMINATING)) {
 //            stopUserActors();
@@ -136,18 +164,35 @@ public class ActorSystem {
     }
 
     // Getters
+
+    /**
+     * 获取Actor系统名称
+     * @return Actor系统名称
+     */
     public String name() {
         return name;
     }
 
+    /**
+     * 获取调度器
+     * @return 调度器
+     */
     public Dispatcher dispatcher() {
         return dispatcher;
     }
 
+    /**
+     * 获取死亡监视器
+     * @return 死亡监视器
+     */
     public DeathWatch deathWatch() {
         return deathWatch;
     }
 
+    /**
+     * 获取调度执行器
+     * @return 调度执行器
+     */
     public ScheduledExecutorService scheduler() {
         return scheduler;
     }

@@ -22,5 +22,15 @@ public enum LifecycleState {
     /**
      * 已停止状态
      */
-    STOPPED
+    STOPPED,
+
+    /**
+     * 正在重启状态
+     */
+    RESTARTING,
+
+    /**
+     * 已失败状态
+     */
+    FAILED
 }

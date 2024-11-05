@@ -57,8 +57,9 @@ public class ActorContext {
         initializeActor();
     }
 
-
-
+    /**
+     * 初始化Actor
+     */
     private void initializeActor() {
         self.initialize(this);
         if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
@@ -66,6 +67,10 @@ public class ActorContext {
         }
     }
 
+    /**
+     * 发送消息给Actor
+     * @param envelope 消息封装
+     */
     public void tell(Envelope envelope) {
         if (state.get() == LifecycleState.STARTED) {
             // 将消息放入邮箱
@@ -75,6 +80,9 @@ public class ActorContext {
         }
     }
 
+    /**
+     * 处理邮箱中的消息
+     */
     private void processMailbox() {
         if (state.get() != LifecycleState.STARTED) {
             return;
@@ -86,6 +94,11 @@ public class ActorContext {
         }
     }
 
+    /**
+     * 处理失败
+     * @param error 异常
+     * @param envelope 消息封装
+     */
     public void handleFailure(Exception error, Envelope envelope) {
         Directive directive = supervisorStrategy.handle(error);
         switch (directive) {
@@ -96,31 +109,52 @@ public class ActorContext {
         }
     }
 
-
-
+    /**
+     * 监视其他Actor
+     * @param other 其他Actor
+     */
     public void watch(ActorRef<?> other) {
         watchedActors.add(other);
         system.deathWatch().watch(self, other);
     }
 
+    /**
+     * 取消监视其他Actor
+     * @param other 其他Actor
+     */
     public void unwatch(ActorRef<?> other) {
         watchedActors.remove(other);
         system.deathWatch().unwatch(self, other);
     }
 
+    /**
+     * 设置接收超时
+     * @param timeout 超时时间
+     */
     public void setReceiveTimeout(Duration timeout) {
         this.receiveTimeout = timeout;
-//        resetReceiveTimeoutTask();
     }
 
+    /**
+     * 获取监督策略
+     * @return 监督策略
+     */
     public SupervisorStrategy supervisorStrategy() {
         return supervisorStrategy;
     }
 
+    /**
+     * 获取Actor系统
+     * @return Actor系统
+     */
     public ActorSystem system() {
         return system;
     }
 
+    /**
+     * 验证子Actor名称
+     * @param name 子Actor名称
+     */
     private void validateChildName(String name) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Child name cannot be null or empty");
@@ -130,24 +164,44 @@ public class ActorContext {
         }
     }
 
+    /**
+     * 获取子Actor
+     * @return 子Actor
+     */
     public Map<String, ActorRef> getChildren() {
         return children;
     }
 
+    /**
+     * 获取Actor路径
+     * @return Actor路径
+     */
     public String getPath() {
         return path;
     }
 
+    /**
+     * 停止Actor
+     */
     public void stop() {
-
+        if (state.compareAndSet(LifecycleState.STARTED, LifecycleState.STOPPING)) {
+            self.postStop();
+            state.set(LifecycleState.STOPPED);
+        }
     }
 
+    /**
+     * 创建子Actor
+     * @param props 子Actor属性
+     * @param name 子Actor名称
+     * @param <R> 子Actor类型
+     * @return 子Actor引用
+     */
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
         String childPath = self.path() + "/" + name;
-        ActorRef<R> child = system.actorOf(props, childPath,self);
+        ActorRef<R> child = system.actorOf(props, childPath, self);
         children.put(name, child);
         return child;
     }
-
 }

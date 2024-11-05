@@ -74,7 +74,7 @@ public class ActorSystem {
         }
 //        validateActorName(name);
 
-        String path = "/user/" + name;
+        String path = "/user/" + name + "/" + UUID.randomUUID().toString();
 
         // 检查是否已存在
         if (actors.containsKey(path)) {

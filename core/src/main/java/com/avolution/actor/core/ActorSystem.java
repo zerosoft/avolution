@@ -67,7 +67,7 @@ public class ActorSystem {
         return actorOf(props, name, null);
     }
 
-    public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorRef actorContextRef) {
+    public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorContext actorContextRef) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
@@ -89,7 +89,7 @@ public class ActorSystem {
             ActorContext context = new ActorContext(path,
                     this,
                     actor,
-                    actorContextRef!=null?actorContextRef:systemGuardian,
+                    actorContextRef!=null?actorContextRef:null,
                     props
             );
 

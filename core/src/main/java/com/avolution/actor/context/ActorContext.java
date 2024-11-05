@@ -1,7 +1,6 @@
 package com.avolution.actor.context;
 
 import com.avolution.actor.core.*;
-import com.avolution.actor.exception.ActorCreationException;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.supervision.Directive;
@@ -13,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -24,7 +24,13 @@ public class ActorContext {
     private final String path;
     private final ActorSystem system;
     private final AbstractActor<?> self;
-    private final ActorRef<?> parent;
+    private final ActorContext parent;
+
+    private final AtomicInteger id = new AtomicInteger(0);
+
+    private boolean isRoot(){
+        return parent==null?true:false;
+    }
 
     // Actor关系管理
     private final Map<String, ActorRef> children;
@@ -42,7 +48,7 @@ public class ActorContext {
     private volatile Duration receiveTimeout;
     private volatile ScheduledFuture<?> receiveTimeoutTask;
 
-    public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorRef<?> parent,
+    public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorContext parent,
                         Props<?> props) {
         this.path = path + "/" + generateUniqueId();
         this.system = system;
@@ -57,8 +63,8 @@ public class ActorContext {
         initializeActor();
     }
 
-    private String generateUniqueId() {
-        return UUID.randomUUID().toString();
+    private int generateUniqueId() {
+        return id.incrementAndGet();
     }
 
     private void initializeActor() {
@@ -110,7 +116,6 @@ public class ActorContext {
 
     public void setReceiveTimeout(Duration timeout) {
         this.receiveTimeout = timeout;
-//        resetReceiveTimeoutTask();
     }
 
     public SupervisorStrategy supervisorStrategy() {
@@ -139,13 +144,20 @@ public class ActorContext {
     }
 
     public void stop() {
+        if (state.compareAndSet(LifecycleState.STARTED, LifecycleState.STOPPING)) {
+            self.postStop();
+            state.set(LifecycleState.STOPPED);
+        }
+    }
 
+    public ActorContext getParent() {
+        return parent;
     }
 
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
         String childPath = self.path() + "/" + name;
-        ActorRef<R> child = system.actorOf(props, childPath,self);
+        ActorRef<R> child = system.actorOf(props, childPath,this);
         children.put(name, child);
         return child;
     }

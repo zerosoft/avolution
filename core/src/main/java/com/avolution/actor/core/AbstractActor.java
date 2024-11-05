@@ -72,7 +72,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         }
     }
 
-    protected void unhandled(T message) {
+    public void unhandled(T message) {
         System.out.println("Unhandled message: " + message);
     }
 
@@ -101,13 +101,8 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     @Override
     public void tell(T message, ActorRef sender) {
         if (!isTerminated()) {
-            Envelope.Builder builder = Envelope.newBuilder();
-            builder.message(message);
-            builder.recipient(this);
-            builder.sender(sender);
-            builder.retryCount(0);
-            builder.messageType(MessageType.NORMAL);
-            context.tell(builder.build());
+            Envelope<T> envelope=new Envelope<>(message,sender,this,MessageType.NORMAL,1);
+            context.tell(envelope);
         }
     }
 

@@ -24,18 +24,21 @@ public class Envelope<T> {
 
     private final int retryCount;
 
-    private Envelope(Builder builder) {
-        this.messageId = builder.messageId;
-        this.message = (T) builder.message;
-        this.sender = builder.sender;
-        this.recipient = builder.recipient;
-        this.timestamp = builder.timestamp;
-        this.messageType = builder.messageType;
-        this.retryCount = builder.retryCount;
-    }
-
-    public static Builder newBuilder() {
-        return new Builder();
+    // 直接使用构造方法替代Builder
+    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient, MessageType messageType, int retryCount) {
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
+        }
+        if (recipient == null) {
+            throw new IllegalArgumentException("Recipient cannot be null");
+        }
+        this.messageId = UUID.randomUUID().toString();
+        this.message = message;
+        this.sender = sender;
+        this.recipient = recipient;
+        this.timestamp = Instant.now();
+        this.messageType = messageType != null ? messageType : MessageType.NORMAL;
+        this.retryCount = retryCount;
     }
 
     // Getters
@@ -51,7 +54,7 @@ public class Envelope<T> {
         return sender;
     }
 
-    public ActorRef<?> recipient() {
+    public ActorRef<T> recipient() {
         return recipient;
     }
 
@@ -67,73 +70,12 @@ public class Envelope<T> {
         return retryCount;
     }
 
-    public Envelope withRetry() {
-        return newBuilder()
-                .from(this)
-                .retryCount(this.retryCount + 1)
-                .build();
+    // 创建一个新Envelope，重试计数增加1
+    public Envelope<T> withRetry() {
+        return new Envelope<>(message, sender, recipient, messageType, retryCount + 1);
     }
 
     public boolean isSystemMessage() {
-        return messageType.equals(MessageType.SYSTEM);
+        return messageType == MessageType.SYSTEM;
     }
-
-    public static class Builder<T> {
-
-        private String messageId = UUID.randomUUID().toString();
-        private T message;
-        private ActorRef sender;
-        private ActorRef<T> recipient;
-        private Instant timestamp = Instant.now();
-        private MessageType messageType = MessageType.NORMAL;
-        private int retryCount = 0;
-
-        public Builder message(T message) {
-            this.message = message;
-            return this;
-        }
-
-        public Builder sender(ActorRef sender) {
-            this.sender = sender;
-            return this;
-        }
-
-        public Builder recipient(ActorRef<T> recipient) {
-            this.recipient = recipient;
-            return this;
-        }
-
-        public Builder messageType(MessageType type) {
-            this.messageType = type;
-            return this;
-        }
-
-        public Builder retryCount(int count) {
-            this.retryCount = count;
-            return this;
-        }
-
-        public Builder from(Envelope envelope) {
-            this.messageId = envelope.messageId;
-            this.message = (T) envelope.message;
-            this.sender = envelope.sender;
-            this.recipient = envelope.recipient;
-            this.timestamp = envelope.timestamp;
-            this.messageType = envelope.messageType;
-            this.retryCount = envelope.retryCount;
-            return this;
-        }
-
-        public Envelope build() {
-            if (message == null) {
-                throw new IllegalStateException("Message cannot be null");
-            }
-            if (recipient == null) {
-                throw new IllegalStateException("Recipient cannot be null");
-            }
-            messageId=UUID.randomUUID().toString();
-            return new Envelope(this);
-        }
-    }
-
 }

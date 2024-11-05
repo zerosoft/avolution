@@ -4,16 +4,23 @@ package com.avolution.actor.core;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
 
 /**
  * Actor抽象基类，提供基础实现
  * @param <T> Actor可处理的消息类型
  */
-public abstract class AbstractActor<T> implements ActorRef<T> {
-
+public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T> {
+    /**
+     * Actor上下文
+     */
     protected ActorContext context;
 
+    private volatile Envelope<T> currentMessage;
+    /**
+     * Actor生命周期状态
+     */
     protected LifecycleState lifecycleState = LifecycleState.NEW;
 
     /**
@@ -21,12 +28,27 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
      *
      * @param message 接收到的消息
      */
-    public abstract void onReceive(Object message);
+    public abstract void onReceive(T message);
 
+    /**
+     * 获取消息发送者
+     * @return
+     */
+    public ActorRef getSender() {
+        return currentMessage.getSender();
+    }
+
+    /**
+     * 获取自身引用
+     * @return
+     */
+    public ActorRef<T> getSelf() {
+        return this;
+    }
     /**
      * 获取Actor上下文
      */
-    protected ActorContext context() {
+    public ActorContext getContext() {
         return context;
     }
 
@@ -42,6 +64,8 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
             context.tell(builder.build());
         }
     }
+
+
 
 
     @Override
@@ -60,11 +84,13 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
         return lifecycleState == LifecycleState.STOPPED;
     }
 
-    // 生命周期回调方法
+    // Actor正式初始换之前的
     public void preStart() {
-    }
 
+    }
+    // 生命周期回调方法
     public void postStop() {
+
     }
 
     public void preRestart(Throwable reason) {
@@ -78,5 +104,24 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
     public void initialize(ActorContext context) {
         this.context = context;
         this.lifecycleState = LifecycleState.STARTED;
+    }
+
+    @Override
+    public void handle(Envelope<T> message) throws Exception {
+        try {
+            // 记录消息处理时间
+            long startTime = System.nanoTime();
+
+            currentMessage = message;
+
+            onReceive(currentMessage.message());
+
+            long processingTime = System.nanoTime() - startTime;
+
+        } catch (Exception e) {
+            context.handleFailure(e, message);
+        } finally {
+            currentMessage = null;
+        }
     }
 }

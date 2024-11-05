@@ -3,7 +3,6 @@ package com.avolution.actor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,12 +23,20 @@ public class ActorSystemTest {
     void test() {
 
         ActorRef<String> helloActor = system.actorOf(Props.create(HelloActor.class), "helloActor");
+        helloActor.tell(Thread.currentThread().threadId() +" world",null);
 
-        helloActor.tell("world",null);
+        ExecutorService executorService = Executors.newCachedThreadPool();
+        for (int i = 0; i < 10; i++) {
+            int finalI = i;
+            executorService.submit(() -> {
+                helloActor.tell(Thread.currentThread().threadId() +" world ="+ finalI +"",null);
+            });
+        }
+
 
         // 等待一段时间后终止系统
         try {
-            Thread.sleep(1000);
+            Thread.sleep(1_000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

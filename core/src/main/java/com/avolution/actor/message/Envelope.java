@@ -8,15 +8,15 @@ import com.avolution.actor.core.ActorRef;
 /**
  * 消息封装类
  */
-public class Envelope {
+public class Envelope<T> {
     // 消息ID
     private final String messageId;
     // 消息内容
-    private final Object message;
+    private final T message;
     // 发送者
-    private final ActorRef sender;
+    private final ActorRef<?> sender;
     // 接收者
-    private final ActorRef recipient;
+    private final ActorRef<T> recipient;
     // 时间戳
     private final Instant timestamp;
 
@@ -26,7 +26,7 @@ public class Envelope {
 
     private Envelope(Builder builder) {
         this.messageId = builder.messageId;
-        this.message = builder.message;
+        this.message = (T) builder.message;
         this.sender = builder.sender;
         this.recipient = builder.recipient;
         this.timestamp = builder.timestamp;
@@ -43,11 +43,11 @@ public class Envelope {
         return messageId;
     }
 
-    public Object message() {
+    public T message() {
         return message;
     }
 
-    public ActorRef<?> sender() {
+    public ActorRef<?> getSender() {
         return sender;
     }
 
@@ -78,26 +78,27 @@ public class Envelope {
         return messageType.equals(MessageType.SYSTEM);
     }
 
-    public static class Builder {
+    public static class Builder<T,S> {
+
         private String messageId = UUID.randomUUID().toString();
-        private Object message;
-        private ActorRef<?> sender;
-        private ActorRef<?> recipient;
+        private T message;
+        private ActorRef<S> sender;
+        private ActorRef<T> recipient;
         private Instant timestamp = Instant.now();
         private MessageType messageType = MessageType.NORMAL;
         private int retryCount = 0;
 
-        public Builder message(Object message) {
+        public Builder message(T message) {
             this.message = message;
             return this;
         }
 
-        public Builder sender(ActorRef<?> sender) {
+        public Builder sender(ActorRef<S> sender) {
             this.sender = sender;
             return this;
         }
 
-        public Builder recipient(ActorRef<?> recipient) {
+        public Builder recipient(ActorRef<T> recipient) {
             this.recipient = recipient;
             return this;
         }
@@ -114,7 +115,7 @@ public class Envelope {
 
         public Builder from(Envelope envelope) {
             this.messageId = envelope.messageId;
-            this.message = envelope.message;
+            this.message = (T) envelope.message;
             this.sender = envelope.sender;
             this.recipient = envelope.recipient;
             this.timestamp = envelope.timestamp;

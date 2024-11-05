@@ -24,10 +24,6 @@ public class Mailbox {
     private final int throughput;
     private volatile boolean closed;
 
-    public Mailbox() {
-        this(100); // 默认吞吐量
-    }
-
     public Mailbox(int throughput) {
         this.queue = new ConcurrentLinkedQueue<>();
         this.systemQueue = new ConcurrentLinkedQueue<>();

@@ -2,7 +2,6 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.dispatch.Dispatcher;
-import com.avolution.actor.message.Envelope;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.system.actor.*;
@@ -18,7 +17,9 @@ public class ActorSystem {
     private static final Logger log = LoggerFactory.getLogger(ActorSystem.class);
 
     private final String name;
+
     private final Map<String, ActorRef<?>> actors;
+
     private final Map<String, ActorContext> contexts;
 
     private final Dispatcher dispatcher;
@@ -29,7 +30,7 @@ public class ActorSystem {
     private final CompletableFuture<Void> terminationFuture;
 
     // 系统Actor
-    private  ActorRef deadLetters;
+    private  ActorRef<IDeadLetterActorMessage> deadLetters;
     private  ActorRef systemGuardian;
     private  ActorRef userGuardian;
 
@@ -43,21 +44,30 @@ public class ActorSystem {
         this.state = new AtomicReference<>(SystemState.NEW);
         this.terminationFuture = new CompletableFuture<>();
 
-        // 创建系统Actor
-//        this.deadLetters = createSystemActor(DeadLetterActor.class, "/system/deadLetters");
 //        this.systemGuardian = createSystemActor(SystemGuardian.class, "/system/guardian");
 //        this.userGuardian = createSystemActor(UserGuardian.class, "/user");
 
         start();
     }
 
+    private ActorRef createSystemActor(Class systemClass, String path) {
+        ActorRef iDeadLetterActorMessageActorRef = actorOf(Props.create(systemClass), path);
+        return iDeadLetterActorMessageActorRef;
+    }
+
     private void start() {
         if (state.compareAndSet(SystemState.NEW, SystemState.RUNNING)) {
             log.info("Actor system '{}' started", name);
         }
+        // 创建系统Actor
+        this.deadLetters = createSystemActor(DeadLetterActor.class, "/system/deadLetters");
     }
 
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {
+        return actorOf(props, name, null);
+    }
+
+    public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorRef actorContextRef) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
@@ -75,12 +85,11 @@ public class ActorSystem {
             // 创建Actor实例
             AbstractActor<T> actor = props.newActor();
 
-
             // 创建ActorContext
             ActorContext context = new ActorContext(path,
                     this,
                     actor,
-                    systemGuardian,
+                    actorContextRef!=null?actorContextRef:systemGuardian,
                     props
             );
 
@@ -100,27 +109,17 @@ public class ActorSystem {
         }
     }
 
-    private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass, String path) {
-//        Props<T> props = Props.create(actorClass);
-//        ActorRef<T> actor = props.create(this, path);
-//        ActorContext<T> context = new ActorContext<>(this, actor, null, props);
-//
-//        actors.put(path, actor);
-//        contexts.put(path, context);
-
-        return null;
-    }
-
     public  ActorContext getContext(String path) {
         return contexts.get(path);
     }
 
-    public void stop(ActorRef<?> actor) {
+    public void stop(ActorRef actor) {
         String path = actor.path();
         actors.remove(path);
         ActorContext context = contexts.remove(path);
         if (context != null) {
-            context.getChildren().values().forEach(this::stop);
+            context.stop();
+//            context.getChildren().values().forEach(this::stop);
         }
 //        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
     }
@@ -152,5 +151,4 @@ public class ActorSystem {
     public ScheduledExecutorService scheduler() {
         return scheduler;
     }
-
 }

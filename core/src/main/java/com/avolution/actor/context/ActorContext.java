@@ -1,9 +1,10 @@
 package com.avolution.actor.context;
 
 import com.avolution.actor.core.*;
+import com.avolution.actor.exception.ActorCreationException;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.MessageHandler;
+import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.lifecycle.LifecycleState;
 import org.slf4j.Logger;
@@ -14,6 +15,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Actor上下文
+ */
 public class ActorContext {
     private static final Logger logger = LoggerFactory.getLogger(ActorContext.class);
 
@@ -23,7 +27,7 @@ public class ActorContext {
     private final ActorRef<?> parent;
 
     // Actor关系管理
-    private final Map<String, ActorRef<?>> children;
+    private final Map<String, ActorRef> children;
 
     private final Set<ActorRef<?>> watchedActors;
 
@@ -31,15 +35,15 @@ public class ActorContext {
     
     // 消息处理
     private final Mailbox mailbox;
-    private volatile Envelope currentMessage;
+
     private final AtomicReference<LifecycleState> state;
     
     // 超时控制
     private volatile Duration receiveTimeout;
     private volatile ScheduledFuture<?> receiveTimeoutTask;
 
-    public ActorContext(String path,ActorSystem system, AbstractActor<?> self, ActorRef<?> parent,
-                       Props<?> props) {
+    public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorRef<?> parent,
+                        Props<?> props) {
         this.path=path;
         this.system = system;
         this.self = self;
@@ -49,7 +53,7 @@ public class ActorContext {
         this.mailbox = new Mailbox(100);
         this.state = new AtomicReference<>(LifecycleState.NEW);
         this.supervisorStrategy = props.supervisorStrategy();
-        
+        // 初始化Actor
         initializeActor();
     }
 
@@ -75,47 +79,24 @@ public class ActorContext {
         if (state.get() != LifecycleState.STARTED) {
             return;
         }
-        mailbox.process(new MessageHandler() {
-            @Override
-            public void handle(Envelope currentMessage) throws Exception {
-                try {
-                    // 记录消息处理时间
-                    long startTime = System.nanoTime();
-
-                    self.onReceive(currentMessage.message());
-
-                    long processingTime = System.nanoTime() - startTime;
-
-                } catch (Exception e) {
-                    handleFailure(e, currentMessage);
-                } finally {
-                    currentMessage = null;
-                }
-            }
-        });
+        mailbox.process(self);
 
         if (mailbox.hasMessages()) {
             system.dispatcher().dispatch(self.path(), this::processMailbox);
         }
     }
 
-    private void handleFailure(Exception error, Envelope envelope) {
-//        SupervisorStrategy.Directive directive = supervisorStrategy.handleException(error);
-//        switch (directive) {
-//            case RESUME -> logger.warn("Actor resumed after error", error);
-//            case RESTART -> restartActor(error);
-//            case STOP -> stopActor();
-//            case ESCALATE -> escalateFailure(error);
-//        }
+    public void handleFailure(Exception error, Envelope envelope) {
+        Directive directive = supervisorStrategy.handle(error);
+        switch (directive) {
+            case RESUME -> logger.warn("Actor resumed after error", error);
+            case RESTART -> self.preRestart(error);
+            case STOP -> self.postStop();
+            case ESCALATE -> self.postRestart(error);
+        }
     }
 
-    public <R> ActorRef<R> spawn(Props<R> props, String name) {
-        validateChildName(name);
-        String childPath = self.path() + "/" + name;
-        ActorRef<R> child = system.actorOf(props, childPath);
-        children.put(name, child);
-        return child;
-    }
+
 
     public void watch(ActorRef<?> other) {
         watchedActors.add(other);
@@ -130,18 +111,6 @@ public class ActorContext {
     public void setReceiveTimeout(Duration timeout) {
         this.receiveTimeout = timeout;
 //        resetReceiveTimeoutTask();
-    }
-
-    public ActorRef<?> self() {
-        return self;
-    }
-
-    public ActorRef<?> parent() {
-        return parent;
-    }
-
-    public ActorRef<?> sender() {
-        return currentMessage != null ? currentMessage.sender() : ActorRef.noSender();
     }
 
     public SupervisorStrategy supervisorStrategy() {
@@ -161,11 +130,24 @@ public class ActorContext {
         }
     }
 
-    public Map<String, ActorRef<?>> getChildren() {
+    public Map<String, ActorRef> getChildren() {
         return children;
     }
 
     public String getPath() {
         return path;
     }
+
+    public void stop() {
+
+    }
+
+    public <R> ActorRef<R> actorOf(Props<R> props, String name) {
+        validateChildName(name);
+        String childPath = self.path() + "/" + name;
+        ActorRef<R> child = system.actorOf(props, childPath,self);
+        children.put(name, child);
+        return child;
+    }
+
 }

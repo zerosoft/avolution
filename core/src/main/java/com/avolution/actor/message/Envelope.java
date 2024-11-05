@@ -78,11 +78,11 @@ public class Envelope<T> {
         return messageType.equals(MessageType.SYSTEM);
     }
 
-    public static class Builder<T,S> {
+    public static class Builder<T> {
 
         private String messageId = UUID.randomUUID().toString();
         private T message;
-        private ActorRef<S> sender;
+        private ActorRef sender;
         private ActorRef<T> recipient;
         private Instant timestamp = Instant.now();
         private MessageType messageType = MessageType.NORMAL;
@@ -93,7 +93,7 @@ public class Envelope<T> {
             return this;
         }
 
-        public Builder sender(ActorRef<S> sender) {
+        public Builder sender(ActorRef sender) {
             this.sender = sender;
             return this;
         }
@@ -131,6 +131,7 @@ public class Envelope<T> {
             if (recipient == null) {
                 throw new IllegalStateException("Recipient cannot be null");
             }
+            messageId=UUID.randomUUID().toString();
             return new Envelope(this);
         }
     }

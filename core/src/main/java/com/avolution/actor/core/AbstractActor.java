@@ -2,10 +2,17 @@ package com.avolution.actor.core;
 
 
 import com.avolution.actor.context.ActorContext;
+import com.avolution.actor.core.annotation.OnReceive;
 import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Actor抽象基类，提供基础实现
@@ -23,12 +30,51 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      */
     protected LifecycleState lifecycleState = LifecycleState.NEW;
 
+
+    private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
+
+    public AbstractActor() {
+        registerHandlers();
+    }
+
+    private void registerHandlers() {
+        for (Method method : this.getClass().getDeclaredMethods()) {
+            if (method.isAnnotationPresent(OnReceive.class)) {
+                Class<?> messageType = method.getAnnotation(OnReceive.class).value();
+                if (method.getParameterCount() == 1 && messageType.isAssignableFrom(method.getParameterTypes()[0])) {
+                    method.setAccessible(true);
+                    handlers.put(messageType, message -> invokeHandler(method, message));
+                }
+            }
+        }
+    }
+
+    private void invokeHandler(Method method, Object message) {
+        try {
+            method.invoke(this, message);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
     /**
      * 处理接收到的消息
      *
      * @param message 接收到的消息
      */
-    public abstract void onReceive(T message);
+    public void onReceive(T message) {
+        Consumer<Object> handler = handlers.get(message.getClass());
+        if (handler != null) {
+            handler.accept(message);
+        } else {
+            unhandled(message);
+        }
+    }
+
+    protected void unhandled(T message) {
+        System.out.println("Unhandled message: " + message);
+    }
 
     /**
      * 获取消息发送者
@@ -64,8 +110,6 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
             context.tell(builder.build());
         }
     }
-
-
 
 
     @Override

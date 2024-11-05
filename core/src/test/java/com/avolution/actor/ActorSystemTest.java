@@ -24,14 +24,14 @@ public class ActorSystemTest {
     @Test
     void test() {
 
-        ActorRef<String> helloActor = system.actorOf(Props.create(HelloActor.class), "helloActor");
-        helloActor.tell(Thread.currentThread().threadId() + " world", null);
+        ActorRef<HelloActorMessage> helloActor = system.actorOf(Props.create(HelloActor.class), "helloActor");
+        helloActor.tell(new HelloActorMessage.Hello(), null);
 
         ExecutorService executorService = Executors.newCachedThreadPool();
         for (int i = 0; i < 10; i++) {
             int finalI = i;
             executorService.submit(() -> {
-                helloActor.tell(Thread.currentThread().threadId() + " world =" + finalI + "", null);
+                helloActor.tell(new HelloActorMessage.World(), null);
             });
         }
 
@@ -45,16 +45,16 @@ public class ActorSystemTest {
 
     @Test
     void testUniqueIdGeneration() {
-        ActorRef<String> actor1 = system.actorOf(Props.create(HelloActor.class), "actor1");
-        ActorRef<String> actor2 = system.actorOf(Props.create(HelloActor.class), "actor2");
+        ActorRef<HelloActorMessage> actor1 = system.actorOf(Props.create(HelloActor.class), "actor1");
+        ActorRef<HelloActorMessage> actor2 = system.actorOf(Props.create(HelloActor.class), "actor2");
 
         assertNotEquals(actor1.path(), actor2.path(), "Actor paths should be unique");
     }
 
     @Test
     void testCreateChildActor() {
-        ActorRef<String> parentActor = system.actorOf(Props.create(HelloActor.class), "parentActor");
-        ActorRef<String> childActor = parentActor.getContext().actorOf(Props.create(HelloActor.class), "childActor");
+        ActorRef<HelloActorMessage> parentActor = system.actorOf(Props.create(HelloActor.class), "parentActor");
+        ActorRef<HelloActorMessage> childActor =  system.actorOf(Props.create(HelloActor.class), "childActor");
 
         assertNotNull(childActor, "Child actor should be created successfully");
         assertTrue(childActor.path().contains("childActor"), "Child actor path should contain its name");
@@ -62,7 +62,7 @@ public class ActorSystemTest {
 
     @Test
     void testOptimizedPath() {
-        ActorRef<String> actor = system.actorOf(Props.create(HelloActor.class), "testActor");
+        ActorRef<HelloActorMessage> actor = system.actorOf(Props.create(HelloActor.class), "testActor");
         String path = actor.path();
         assertTrue(path.matches("/user/testActor/[0-9a-fA-F-]+"), "Path should contain the new unique ID");
     }

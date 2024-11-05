@@ -1,24 +1,17 @@
 package com.avolution.actor;
 
 import com.avolution.actor.core.AbstractActor;
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.Props;
+import com.avolution.actor.core.annotation.OnReceive;
 
-import java.util.concurrent.TimeUnit;
+public class HelloActor extends AbstractActor<HelloActorMessage> {
 
-public class HelloActor extends AbstractActor<String> {
+    @OnReceive(HelloActorMessage.Hello.class)
+    public void handleHelloMessage(HelloActorMessage.Hello message) {
+        System.out.println("Hello, Actor! " + message);
+    }
 
-    @Override
-    public void onReceive(String message) {
-        try {
-            TimeUnit.MILLISECONDS.sleep(100L);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        System.out.println(Thread.currentThread().toString()+" Hello " + message);
-//        getSender().tell("Hello " + message, this);
-//        getSender().tell("Hello " + message, this);
-        ActorRef actorRef = getContext().actorOf(Props.create(HelloActor.class), "hello-actor-" + message);
-        actorRef.tell("Hello Two" + message, this);
+    @OnReceive(HelloActorMessage.World.class)
+    public void handleWorldMessage(HelloActorMessage.World message) {
+        System.out.println("World, Actor! " + message);
     }
 }

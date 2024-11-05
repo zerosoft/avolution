@@ -44,7 +44,7 @@ public class ActorContext {
 
     public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorRef<?> parent,
                         Props<?> props) {
-        this.path=path;
+        this.path = path + "/" + generateUniqueId();
         this.system = system;
         this.self = self;
         this.parent = parent;
@@ -57,7 +57,9 @@ public class ActorContext {
         initializeActor();
     }
 
-
+    private String generateUniqueId() {
+        return UUID.randomUUID().toString();
+    }
 
     private void initializeActor() {
         self.initialize(this);
@@ -95,8 +97,6 @@ public class ActorContext {
             case ESCALATE -> self.postRestart(error);
         }
     }
-
-
 
     public void watch(ActorRef<?> other) {
         watchedActors.add(other);

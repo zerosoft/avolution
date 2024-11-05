@@ -10,7 +10,6 @@ import com.avolution.actor.exception.ActorCreationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,7 +19,7 @@ public class ActorSystem {
 
     private final String name;
     private final Map<String, ActorRef<?>> actors;
-    private final Map<String, ActorContext<?>> contexts;
+    private final Map<String, ActorContext> contexts;
 
     private final Dispatcher dispatcher;
     private final DeathWatch deathWatch;
@@ -76,27 +75,24 @@ public class ActorSystem {
             // 创建Actor实例
             AbstractActor<T> actor = props.newActor();
 
-            // 创建ActorRef
-            ActorRef<T> actorRef = actor.context().self();
 
             // 创建ActorContext
-            ActorContext<T> context = new ActorContext<>(
+            ActorContext context = new ActorContext(path,
                     this,
-                    actorRef,
-                    userGuardian,
-                    props,
-                    actor
+                    actor,
+                    systemGuardian,
+                    props
             );
 
             // 注册Actor
-            actors.put(path, actorRef);
+            actors.put(path, actor);
             contexts.put(path, context);
 
             // 初始化Actor
             actor.initialize(context);
 
             log.debug("Created actor: {}", path);
-            return actorRef;
+            return actor;
 
         } catch (Exception e) {
             log.error("Failed to create actor: {}", name, e);
@@ -115,15 +111,14 @@ public class ActorSystem {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
-    public <T> ActorContext<T> getContext(String path) {
-        return (ActorContext<T>) contexts.get(path);
+    public  ActorContext getContext(String path) {
+        return contexts.get(path);
     }
 
     public void stop(ActorRef<?> actor) {
         String path = actor.path();
         actors.remove(path);
-        ActorContext<?> context = contexts.remove(path);
+        ActorContext context = contexts.remove(path);
         if (context != null) {
             context.getChildren().values().forEach(this::stop);
         }

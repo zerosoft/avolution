@@ -14,15 +14,14 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class ActorContext<T> {
+public class ActorContext {
     private static final Logger logger = LoggerFactory.getLogger(ActorContext.class);
 
+    private final String path;
     private final ActorSystem system;
-    private final ActorRef<T> self;
+    private final AbstractActor<?> self;
     private final ActorRef<?> parent;
-    private final Props<T> props;
-    private final AbstractActor<T> actor;
-    
+
     // Actor关系管理
     private final Map<String, ActorRef<?>> children;
 
@@ -39,13 +38,12 @@ public class ActorContext<T> {
     private volatile Duration receiveTimeout;
     private volatile ScheduledFuture<?> receiveTimeoutTask;
 
-    public ActorContext(ActorSystem system, ActorRef<T> self, ActorRef<?> parent, 
-                       Props<T> props, AbstractActor<T> actor) {
+    public ActorContext(String path,ActorSystem system, AbstractActor<?> self, ActorRef<?> parent,
+                       Props<?> props) {
+        this.path=path;
         this.system = system;
         this.self = self;
         this.parent = parent;
-        this.props = props;
-        this.actor = actor;
         this.children = new ConcurrentHashMap<>();
         this.watchedActors = ConcurrentHashMap.newKeySet();
         this.mailbox = new Mailbox(100);
@@ -55,10 +53,12 @@ public class ActorContext<T> {
         initializeActor();
     }
 
+
+
     private void initializeActor() {
-        actor.initialize(this);
+        self.initialize(this);
         if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
-            actor.preStart();
+            self.preStart();
         }
     }
 
@@ -82,7 +82,7 @@ public class ActorContext<T> {
                     // 记录消息处理时间
                     long startTime = System.nanoTime();
 
-                    actor.onReceive(currentMessage.message());
+                    self.onReceive(currentMessage.message());
 
                     long processingTime = System.nanoTime() - startTime;
 
@@ -132,7 +132,7 @@ public class ActorContext<T> {
 //        resetReceiveTimeoutTask();
     }
 
-    public ActorRef<T> self() {
+    public ActorRef<?> self() {
         return self;
     }
 
@@ -163,5 +163,9 @@ public class ActorContext<T> {
 
     public Map<String, ActorRef<?>> getChildren() {
         return children;
+    }
+
+    public String getPath() {
+        return path;
     }
 }

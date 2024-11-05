@@ -4,6 +4,7 @@ package com.avolution.actor.core;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageType;
 
 /**
  * Actor抽象基类，提供基础实现
@@ -34,6 +35,10 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
         if (!isTerminated()) {
             Envelope.Builder builder = Envelope.newBuilder();
             builder.message(message);
+            builder.recipient(this);
+            builder.sender(sender);
+            builder.retryCount(0);
+            builder.messageType(MessageType.NORMAL);
             context.tell(builder.build());
         }
     }
@@ -41,7 +46,7 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
 
     @Override
     public String path() {
-        return context.self().path();
+        return context.getPath();
     }
 
     @Override

@@ -2,10 +2,13 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.supervision.DefaultSupervisorStrategy;
 import com.avolution.actor.supervision.SupervisorStrategy;
+
+import java.lang.reflect.Constructor;
 import java.util.function.Supplier;
 import com.avolution.actor.exception.ActorCreationException;
 
 public class Props<T> {
+
     private final Supplier<AbstractActor<T>> factory;
     private final SupervisorStrategy supervisorStrategy;
     private final int throughput;
@@ -18,12 +21,40 @@ public class Props<T> {
         this.throughput = throughput;
     }
 
+    /**
+     * 创建Actor
+     * @param actorClass
+     * @return
+     * @param <T>
+     */
     public static <T> Props<T> create(Class<? extends AbstractActor<T>> actorClass) {
         return new Props<>(() -> {
             try {
                 return actorClass.getDeclaredConstructor().newInstance();
             } catch (Exception e) {
                 throw new ActorCreationException("Failed to create actor instance", e);
+            }
+        }, DefaultSupervisorStrategy.INSTANCE, 100);
+    }
+
+    /**
+     * 创建带参数的Actor
+     * @param actorClass
+     * @param params
+     * @return
+     * @param <T>
+     */
+    public static <T> Props<T> create(Class<? extends AbstractActor<T>> actorClass, Object... params) {
+        return new Props<>(() -> {
+            try {
+                Class<?>[] paramTypes = new Class[params.length];
+                for (int i = 0; i < params.length; i++) {
+                    paramTypes[i] = params[i].getClass();
+                }
+                Constructor<? extends AbstractActor<T>> constructor = actorClass.getDeclaredConstructor(paramTypes);
+                return constructor.newInstance(params);
+            } catch (Exception e) {
+                throw new ActorCreationException("Failed to create actor instance with parameters", e);
             }
         }, DefaultSupervisorStrategy.INSTANCE, 100);
     }

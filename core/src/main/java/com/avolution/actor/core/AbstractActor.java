@@ -138,11 +138,11 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
     public void preRestart(Throwable reason) {
-
+        // 在重启之前的处理逻辑
     }
 
     public void postRestart(Throwable reason) {
-
+        // 在重启之后的处理逻辑
     }
 
     public void initialize(ActorContext context) {

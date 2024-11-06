@@ -1,6 +1,5 @@
 package com.avolution.actor.concurrent;
 
-import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.*;
@@ -8,18 +7,31 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+/**
+ * 虚拟线程调度器
+ */
 public class VirtualThreadScheduler implements ScheduledExecutorService {
     private final ExecutorService executor;
     private final ScheduledExecutorService scheduler;
     private final AtomicBoolean isShutdown;
     private final AtomicInteger activeTaskCount;
 
+    public VirtualThreadScheduler(String nameFix){
+
+        ThreadFactory factory = Thread.ofVirtual().name(nameFix,1L).factory();
+        this.executor = Executors.newThreadPerTaskExecutor(factory);
+
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().name("VirtualThreadScheduler")::unstarted);
+
+        this.isShutdown = new AtomicBoolean(false);
+        this.activeTaskCount = new AtomicInteger(0);
+    }
+
     public VirtualThreadScheduler() {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = Thread.ofVirtual().name("scheduler").unstarted(r);
-            return t;
-        });
+
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().name("VirtualThreadScheduler")::unstarted);
+
         this.isShutdown = new AtomicBoolean(false);
         this.activeTaskCount = new AtomicInteger(0);
     }

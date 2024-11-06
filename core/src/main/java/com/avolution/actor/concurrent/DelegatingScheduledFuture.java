@@ -6,6 +6,10 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+/**
+ * 代理ScheduledFuture
+ * @param <V>
+ */
 public class DelegatingScheduledFuture<V> implements ScheduledFuture<V> {
 
     private final ScheduledFuture<V> delegate;

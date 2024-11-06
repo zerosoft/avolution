@@ -1,5 +1,6 @@
 package com.avolution.actor.context;
 
+import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.core.*;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
@@ -43,7 +44,8 @@ public class ActorContext {
     private final Mailbox mailbox;
 
     private final AtomicReference<LifecycleState> state;
-    
+
+    private final ScheduledExecutorService scheduler;
     // 超时控制
     private volatile Duration receiveTimeout;
     private volatile ScheduledFuture<?> receiveTimeoutTask;
@@ -59,6 +61,7 @@ public class ActorContext {
         this.mailbox = new Mailbox(100);
         this.state = new AtomicReference<>(LifecycleState.NEW);
         this.supervisorStrategy = props.supervisorStrategy();
+        this.scheduler=new VirtualThreadScheduler();
         // 初始化Actor
         initializeActor();
     }
@@ -166,6 +169,16 @@ public class ActorContext {
         return child;
     }
 
+    public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+        return scheduler.schedule(command, delay, unit);
+    }
 
+    public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+        return scheduler.scheduleAtFixedRate(command, initialDelay, period, unit);
+    }
+
+    public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
+        return scheduler.scheduleWithFixedDelay(command, initialDelay, delay, unit);
+    }
 
 }

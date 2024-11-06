@@ -13,5 +13,6 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
     @OnReceive(HelloActorMessage.World.class)
     public void handleWorldMessage(HelloActorMessage.World message) {
         System.out.println("World, Actor! " + message);
+        getSender().tell("OK",getSelf());
     }
 }

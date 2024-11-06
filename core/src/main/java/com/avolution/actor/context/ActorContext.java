@@ -150,6 +150,10 @@ public class ActorContext {
         }
     }
 
+    public void stop(ActorRef actorRef){
+
+    }
+
     public ActorContext getParent() {
         return parent;
     }
@@ -161,5 +165,7 @@ public class ActorContext {
         children.put(name, child);
         return child;
     }
+
+
 
 }

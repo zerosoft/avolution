@@ -3,6 +3,7 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.exception.AskTimeoutException;
 import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
@@ -10,8 +11,12 @@ import com.avolution.actor.message.MessageType;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -162,5 +167,40 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         } finally {
             currentMessage = null;
         }
+    }
+
+    public <R> CompletableFuture<R> ask(T message, Duration timeout) {
+        CompletableFuture<R> future = new CompletableFuture<>();
+
+        // 创建临时Actor接收响应
+        Props<R> tempProps = Props.create(() -> new AbstractActor<R>() {
+            @Override
+            public void onReceive(R message) {
+                future.complete(message);
+                context.stop();
+            }
+        });
+
+        // 创建临时Actor
+        ActorRef<R> tempActor = context.actorOf(tempProps, "temp-" + UUID.randomUUID());
+
+        // 发送消息
+        tell(message, tempActor);
+
+        // 设置超时
+        context.system().scheduler().schedule(() -> {
+            if (!future.isDone()) {
+                future.completeExceptionally(
+                        new AskTimeoutException("Ask timed out after " + timeout)
+                );
+                context.stop(tempActor);
+            }
+        }, 5L, TimeUnit.SECONDS);
+
+        return future;
+    }
+
+    public <R> CompletableFuture<R> ask(T message) {
+        return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
     }
 }

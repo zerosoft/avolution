@@ -1,6 +1,9 @@
 package com.avolution.actor.core;
 
 
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Actor引用接口
  * 提供与Actor交互的最小必要方法集
@@ -13,6 +16,15 @@ public interface ActorRef<T> {
      * @param sender 消息发送者
      */
     void tell(T message, ActorRef sender);
+
+    /**
+     * 发送消息给Actor 等待返回信息
+     * @param message 消息内容
+     * @param timeout 超时时间
+     * @return
+     * @param <R>
+     */
+    <R> CompletableFuture<R> ask(T message, Duration timeout);
 
     /**
      * 获取Actor的路径

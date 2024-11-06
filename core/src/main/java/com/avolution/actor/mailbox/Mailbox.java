@@ -64,7 +64,7 @@ public class Mailbox {
     /**
      * 处理队列中的消息
      */
-    public void process(MessageHandler handler) {
+    public void process(MessageHandler<?> handler) {
         if (processing.compareAndSet(false, true)) {
             try {
                 int processed = 0;

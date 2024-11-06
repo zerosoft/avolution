@@ -3,10 +3,12 @@ package com.avolution.actor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
+import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,6 +35,13 @@ public class ActorSystemTest {
             executorService.submit(() -> {
                 helloActor.tell(new HelloActorMessage.World(), null);
             });
+        }
+
+        try {
+            Object ask = ASK.ask(helloActor, new HelloActorMessage.World(), Duration.ofSeconds(5));
+            System.out.println(ask);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
 
         // 等待一段时间后终止系统

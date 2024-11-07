@@ -2,6 +2,7 @@ package com.avolution.actor.core;
 
 
 import com.avolution.actor.message.Signal;
+import com.avolution.actor.system.NoSender;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -19,7 +20,14 @@ public interface ActorRef<T> {
      */
     void tell(T message, ActorRef sender);
 
+    /**
+     * 发送信号给Actor
+     * @param signal 信号
+     * @param sender 发送者
+     */
     void tell(Signal signal, ActorRef sender);
+
+
     /**
      * 发送消息给Actor 等待返回信息
      * @param message 消息内容
@@ -56,6 +64,6 @@ public interface ActorRef<T> {
      * @return 空发送者
      */
     static ActorRef noSender() {
-        return null;
+        return NoSender.noSender();
     }
 }

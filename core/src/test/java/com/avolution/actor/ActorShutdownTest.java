@@ -82,7 +82,6 @@ public class ActorShutdownTest {
         ActorRef<ShutdownTestActor.Message> actor =
                 system.actorOf(Props.create(ShutdownTestActor.class), "shutdown-test");
 
-
         ActorRef<ShutdownTestActor.Message> asked = ASK.ask(actor, new ShutdownTestActor.CreateChildMessage(Duration.ofMillis(500)), Duration.ofSeconds(1));
 
         // 2. 发送长时间处理的消息

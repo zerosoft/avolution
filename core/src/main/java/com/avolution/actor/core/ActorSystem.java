@@ -94,14 +94,14 @@ public class ActorSystem {
             );
 
             // 注册Actor
-            actors.put(path, actor);
+            actors.put(path, new ActorRefProxy<>(actor));
             contexts.put(path, context);
 
             // 初始化Actor
             actor.initialize(context);
 
             log.debug("Created actor: {}", path);
-            return actor;
+            return new ActorRefProxy<>(actor);
 
         } catch (Exception e) {
             log.error("Failed to create actor: {}", name, e);

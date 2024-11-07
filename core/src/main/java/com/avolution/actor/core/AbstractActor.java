@@ -94,7 +94,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      * @return
      */
     public ActorRef<T> getSelf() {
-        return this;
+        return new ActorRefProxy<>(this);
     }
     /**
      * 获取Actor上下文

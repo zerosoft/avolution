@@ -10,6 +10,7 @@ import com.avolution.actor.lifecycle.LifecycleState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,7 +25,7 @@ public class ActorContext {
 
     private final String path;
     private final ActorSystem system;
-    private final AbstractActor<?> self;
+    private final WeakReference<AbstractActor<?>> self;
     private final ActorContext parent;
 
     private final AtomicInteger id = new AtomicInteger(0);
@@ -54,7 +55,7 @@ public class ActorContext {
                         Props<?> props) {
         this.path = path + "/" + generateUniqueId();
         this.system = system;
-        this.self = self;
+        this.self = new WeakReference<>(self);
         this.parent = parent;
         this.children = new ConcurrentHashMap<>();
         this.watchedActors = ConcurrentHashMap.newKeySet();
@@ -71,9 +72,12 @@ public class ActorContext {
     }
 
     private void initializeActor() {
-        self.initialize(this);
-        if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
-            self.preStart();
+        AbstractActor<?> actor = self.get();
+        if (actor != null) {
+            actor.initialize(this);
+            if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
+                actor.preStart();
+            }
         }
     }
 
@@ -82,7 +86,7 @@ public class ActorContext {
             // 将消息放入邮箱
             mailbox.enqueue(envelope);
             // 如果邮箱中只有当前消息，则立即处理
-            system.dispatcher().dispatch(self.path(), this::processMailbox);
+            system.dispatcher().dispatch(self.get().path(), this::processMailbox);
         }
     }
 
@@ -90,10 +94,10 @@ public class ActorContext {
         if (state.get() != LifecycleState.STARTED) {
             return;
         }
-        mailbox.process(self);
+        mailbox.process(self.get());
 
         if (mailbox.hasMessages()) {
-            system.dispatcher().dispatch(self.path(), this::processMailbox);
+            system.dispatcher().dispatch(self.get().path(), this::processMailbox);
         }
     }
 
@@ -101,20 +105,20 @@ public class ActorContext {
         Directive directive = supervisorStrategy.handle(error);
         switch (directive) {
             case RESUME -> logger.warn("Actor resumed after error", error);
-            case RESTART -> self.preRestart(error);
-            case STOP -> self.postStop();
-            case ESCALATE -> self.postRestart(error);
+            case RESTART -> self.get().preRestart(error);
+            case STOP -> self.get().postStop();
+            case ESCALATE -> self.get().postRestart(error);
         }
     }
 
     public void watch(ActorRef<?> other) {
         watchedActors.add(other);
-        system.deathWatch().watch(self, other);
+        system.deathWatch().watch(self.get(), other);
     }
 
     public void unwatch(ActorRef<?> other) {
         watchedActors.remove(other);
-        system.deathWatch().unwatch(self, other);
+        system.deathWatch().unwatch(self.get(), other);
     }
 
     public void setReceiveTimeout(Duration timeout) {
@@ -148,7 +152,7 @@ public class ActorContext {
 
     public void stop() {
         if (state.compareAndSet(LifecycleState.STARTED, LifecycleState.STOPPING)) {
-            self.postStop();
+            self.get().postStop();
             state.set(LifecycleState.STOPPED);
         }
     }
@@ -163,7 +167,7 @@ public class ActorContext {
 
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
-        String childPath = self.path() + "/" + name;
+        String childPath = self.get().path() + "/" + name;
         ActorRef<R> child = system.actorOf(props, childPath,this);
         children.put(name, child);
         return child;

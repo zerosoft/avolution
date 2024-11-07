@@ -14,4 +14,8 @@ public interface HelloActorMessage {
 
     }
 
+    class Terminate implements HelloActorMessage{
+
+    }
+
 }

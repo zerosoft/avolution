@@ -1,6 +1,8 @@
 package com.avolution.actor.core;
 
 
+import com.avolution.actor.message.Signal;
+
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
@@ -17,6 +19,7 @@ public interface ActorRef<T> {
      */
     void tell(T message, ActorRef sender);
 
+    void tell(Signal signal, ActorRef sender);
     /**
      * 发送消息给Actor 等待返回信息
      * @param message 消息内容

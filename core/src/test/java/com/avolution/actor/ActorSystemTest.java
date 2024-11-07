@@ -3,6 +3,7 @@ package com.avolution.actor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
+import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,6 +75,27 @@ public class ActorSystemTest {
         ActorRef<HelloActorMessage> actor = system.actorOf(Props.create(HelloActor.class), "testActor");
         String path = actor.path();
         assertTrue(path.matches("/user/testActor/[0-9a-fA-F-]+"), "Path should contain the new unique ID");
+    }
+
+    @Test
+    void testActorTermination() {
+        ActorRef<HelloActorMessage> actor = system.actorOf(Props.create(HelloActor.class), "testActor");
+        assertFalse(actor.isTerminated(), "Actor should not be terminated");
+        actor.tell(new HelloActorMessage.Terminate(), null);
+        try {
+            Thread.sleep(1_000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        try {
+            Thread.sleep(1_000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+
+        assertTrue(actor.isTerminated(), "Actor should be terminated");
     }
 
     @AfterEach

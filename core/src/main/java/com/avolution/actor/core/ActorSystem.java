@@ -83,27 +83,21 @@ public class ActorSystem {
         }
 
         try {
-            // 创建Actor实例
             AbstractActor<T> actor = props.newActor();
+            ActorContext context = new ActorContext(path, this, actor,
+                    actorContextRef != null ? actorContextRef : null, props);
 
-            // 创建ActorContext
-            ActorContext context = new ActorContext(path,
-                    this,
-                    actor,
-                    actorContextRef!=null?actorContextRef:null,
-                    props
-            );
+            ActorRefProxy<T> actorRef = new ActorRefProxy<>(actor);
 
             // 注册Actor
-            actors.put(path, new ActorRefProxy<>(actor));
+            actors.put(path, actorRef);
             contexts.put(path, context);
 
             // 初始化Actor
             actor.initialize(context);
 
             log.debug("Created actor: {}", path);
-            return new ActorRefProxy<>(actor);
-
+            return actorRef;
         } catch (Exception e) {
             log.error("Failed to create actor: {}", name, e);
             throw new ActorCreationException("Failed to create actor: " + name, e);

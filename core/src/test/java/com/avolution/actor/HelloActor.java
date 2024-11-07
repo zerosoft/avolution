@@ -30,4 +30,12 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
             System.out.println("Hello, Actor! timer  " + message);
         },1000, TimeUnit.MILLISECONDS);
     }
+
+    @OnReceive(HelloActorMessage.Terminate.class)
+    public void handleStopMessage(HelloActorMessage.Terminate message) {
+        System.out.println("Stop, Actor! " + message);
+        getContext().stop(getSelf());
+    }
+
+
 }

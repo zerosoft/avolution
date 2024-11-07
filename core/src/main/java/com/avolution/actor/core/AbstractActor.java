@@ -8,6 +8,7 @@ import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.Signal;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -34,8 +35,11 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      * Actor生命周期状态
      */
     protected LifecycleState lifecycleState = LifecycleState.NEW;
-
-
+    // 持有唯一的ActorRefProxy引用
+    private ActorRefProxy<T> selfRef;
+    /**
+     * 消息处理器
+     */
     private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
 
     public AbstractActor() {
@@ -89,12 +93,15 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         return currentMessage.getSender();
     }
 
-    /**
-     * 获取自身引用
-     * @return
-     */
+
+    protected void setSelfRef(ActorRefProxy<T> ref) {
+        if (this.selfRef == null) {
+            this.selfRef = ref;
+        }
+    }
+
     public ActorRef<T> getSelf() {
-        return new ActorRefProxy<>(this);
+        return selfRef;
     }
     /**
      * 获取Actor上下文
@@ -107,6 +114,14 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     public void tell(T message, ActorRef sender) {
         if (!isTerminated()) {
             Envelope<T> envelope=new Envelope<>(message,sender,this,MessageType.NORMAL,1);
+            context.tell(envelope);
+        }
+    }
+
+    @Override
+    public void tell(Signal message, ActorRef sender) {
+        if (!isTerminated()) {
+            Envelope envelope=new Envelope(message,sender,this,MessageType.SYSTEM,1);
             context.tell(envelope);
         }
     }
@@ -158,6 +173,12 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
             currentMessage = message;
 
+            // 处理系统信号
+            if (message.getMessage() instanceof Signal signal) {
+                signal.handle(this);
+                return;
+            }
+
             onReceive(currentMessage.getMessage());
 
             long processingTime = System.nanoTime() - startTime;
@@ -205,7 +226,12 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
     public void destroy() {
-        // Notify ActorRefProxy to release the reference
-        getSelf().tell(null, ActorRef.noSender());
+        if (selfRef != null) {
+            selfRef.invalidate();
+            selfRef = null;
+        }
+        context = null;
+        currentMessage = null;
+        lifecycleState = LifecycleState.STOPPED;
     }
 }

@@ -94,7 +94,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      * @return
      */
     public ActorRef<T> getSelf() {
-        return this;
+        return new ActorRefProxy<>(this);
     }
     /**
      * 获取Actor上下文
@@ -134,7 +134,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
     // 生命周期回调方法
     public void postStop() {
-
+        destroy();
     }
 
     public void preRestart(Throwable reason) {
@@ -202,5 +202,10 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     public <R> CompletableFuture<R> ask(T message) {
         return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
+    }
+
+    public void destroy() {
+        // Notify ActorRefProxy to release the reference
+        getSelf().tell(null, ActorRef.noSender());
     }
 }

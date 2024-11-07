@@ -6,6 +6,7 @@ import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.system.actor.*;
 import com.avolution.actor.exception.ActorCreationException;
+import com.avolution.actor.message.PoisonPill;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,9 +121,8 @@ public class ActorSystem {
         ActorContext context = contexts.remove(path);
         if (context != null) {
             context.stop();
-//            context.getChildren().values().forEach(this::stop);
         }
-//        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
     }
 
     public CompletableFuture<Void> terminate() {

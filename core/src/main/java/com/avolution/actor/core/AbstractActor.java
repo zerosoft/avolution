@@ -8,6 +8,7 @@ import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.PoisonPill;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -69,6 +70,11 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      * @param message 接收到的消息
      */
     public void onReceive(T message) {
+        if (message instanceof PoisonPill) {
+            handleSignal(message);
+            return;
+        }
+
         Consumer<Object> handler = handlers.get(message.getClass());
         if (handler != null) {
             handler.accept(message);
@@ -79,6 +85,17 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     public void unhandled(T message) {
         System.out.println("Unhandled message: " + message);
+    }
+
+    /**
+     * 处理系统信号
+     *
+     * @param signal 系统信号
+     */
+    public void handleSignal(T signal) {
+        if (signal instanceof PoisonPill) {
+            postStop();
+        }
     }
 
     /**

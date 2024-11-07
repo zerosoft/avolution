@@ -120,13 +120,88 @@ public class ActorSystem {
     }
 
     public CompletableFuture<Void> terminate() {
-//        if (state.compareAndSet(SystemState.RUNNING, SystemState.TERMINATING)) {
-//            stopUserActors();
-//            stopSystemActors();
-//            shutdownInternals();
-//            state.set(SystemState.TERMINATED);
-//            terminationFuture.complete(null);
-//        }
+        if (state.compareAndSet(SystemState.RUNNING, SystemState.TERMINATING)) {
+            try {
+                log.info("Terminating actor system '{}'...", name);
+
+                // 1. 停止用户Actor
+                stopUserActors();
+
+                // 2. 停止系统Actor
+                stopSystemActors();
+
+                // 3. 关闭内部组件
+                shutdownInternals();
+
+                // 4. 设置终止状态
+                state.set(SystemState.TERMINATED);
+                terminationFuture.complete(null);
+
+                log.info("Actor system '{}' terminated", name);
+            } catch (Exception e) {
+                log.error("Error during actor system termination", e);
+                terminationFuture.completeExceptionally(e);
+            }
+        }
+        return terminationFuture;
+    }
+
+    private void stopUserActors() {
+        // 获取所有用户Actor路径
+        List<String> userActorPaths = actors.keySet().stream()
+                .filter(path -> path.startsWith("/user/"))
+                .toList();
+
+        // 停止所有用户Actor
+        for (String path : userActorPaths) {
+            ActorRef<?> actor = actors.get(path);
+            if (actor != null) {
+                stop(actor);
+            }
+        }
+
+        // 最后停止用户守护者
+        if (userGuardian != null) {
+            stop(userGuardian);
+        }
+    }
+
+    private void stopSystemActors() {
+        // 按照依赖顺序反向停止系统Actor
+        if (systemGuardian != null) {
+            stop(systemGuardian);
+        }
+        if (deadLetters != null) {
+            stop(deadLetters);
+        }
+    }
+
+    private void shutdownInternals() {
+        try {
+            // 关闭调度器
+            if (scheduler != null) {
+                scheduler.shutdown();
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            }
+
+            // 关闭消息分发器
+            if (dispatcher != null) {
+                dispatcher.shutdown();
+            }
+
+            // 清理其他资源
+            actors.clear();
+            contexts.clear();
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while shutting down internals", e);
+        }
+    }
+
+    public CompletableFuture<Void> getWhenTerminated() {
         return terminationFuture;
     }
 

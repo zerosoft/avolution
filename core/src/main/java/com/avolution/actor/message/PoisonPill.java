@@ -14,6 +14,6 @@ public final class PoisonPill implements Signal {
 
     @Override
     public void handle(AbstractActor<?> actor) {
-        actor.postStop();
+        actor.shutdown();
     }
 }

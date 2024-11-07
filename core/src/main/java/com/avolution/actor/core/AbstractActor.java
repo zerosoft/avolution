@@ -9,6 +9,8 @@ import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
+import com.avolution.actor.system.actor.IDeadLetterActorMessage;
+import org.slf4j.Logger;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -25,6 +27,8 @@ import java.util.function.Consumer;
  * @param <T> Actor可处理的消息类型
  */
 public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T> {
+    Logger logger=org.slf4j.LoggerFactory.getLogger(AbstractActor.class);
+
     /**
      * Actor上下文
      */
@@ -149,7 +153,20 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
     // 生命周期回调方法
     public void postStop() {
-        destroy();
+        try {
+            // 执行子类的清理逻辑
+            onPostStop();
+        } finally {
+            // 确保资源被清理
+            destroy();
+        }
+    }
+
+    /**
+     * 子类可以重写此方法实现自定义清理逻辑
+     */
+    protected void onPostStop() {
+        // 默认实现为空
     }
 
     public void preRestart(Throwable reason) {
@@ -225,13 +242,65 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
     }
 
-    public void destroy() {
-        if (selfRef != null) {
-            selfRef.invalidate();
-            selfRef = null;
+    /**
+     * 销毁Actor的资源
+     */
+    protected void destroy() {
+        // 1. 取消所有待处理的消息
+        if (currentMessage != null) {
+            currentMessage = null;
         }
-        context = null;
-        currentMessage = null;
+
+        // 2. 清理上下文引用
+        if (context != null) {
+            // 停止所有子Actor
+            context.getChildren().values().forEach(child -> {
+                context.system().stop(child);
+            });
+            context = null;
+        }
+
+        // 3. 更新生命周期状态
         lifecycleState = LifecycleState.STOPPED;
+
+        // 4. 通知死信系统
+        if (context != null && context.system() != null) {
+//            context.system().deadLetters().tell(
+//                    new IDeadLetterActorMessage.DeadLetter(self(), "Actor destroyed"),
+//                    ActorRef.noSender()
+//            );
+        }
+    }
+
+
+    /**
+     * 优雅关闭Actor
+     */
+    public final void shutdown() {
+        if (lifecycleState != LifecycleState.STOPPED) {
+            try {
+                // 1. 调用预停止钩子
+                postStop();
+
+                // 2. 停止接收新消息
+                lifecycleState = LifecycleState.STOPPING;
+
+                // 3. 等待当前消息处理完成
+                if (currentMessage != null) {
+                    // 可以添加超时逻辑
+                    while (currentMessage != null) {
+                        Thread.yield();
+                    }
+                }
+                // 4. 销毁资源
+                postStop();
+
+            } catch (Exception e) {
+                logger.error("Error during actor shutdown: {}", e.getMessage(), e);
+            } finally {
+                // 5. 确保状态更新
+                lifecycleState = LifecycleState.STOPPED;
+            }
+        }
     }
 }

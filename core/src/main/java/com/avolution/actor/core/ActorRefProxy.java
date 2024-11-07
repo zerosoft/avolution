@@ -8,7 +8,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ActorRefProxy<T> implements ActorRef<T> {
 
-    private final AbstractActor<T> actor;
+    private AbstractActor<T> actor;
 
     public ActorRefProxy(AbstractActor<T> actor) {
         this.actor = actor;
@@ -37,5 +37,9 @@ public class ActorRefProxy<T> implements ActorRef<T> {
     @Override
     public boolean isTerminated() {
         return actor.isTerminated();
+    }
+
+    public void destroy() {
+        actor = null;
     }
 }

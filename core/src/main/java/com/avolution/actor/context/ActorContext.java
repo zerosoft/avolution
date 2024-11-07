@@ -153,12 +153,16 @@ public class ActorContext {
     public void stop() {
         if (state.compareAndSet(LifecycleState.STARTED, LifecycleState.STOPPING)) {
             self.get().postStop();
+            ActorRefProxy<?> proxy = (ActorRefProxy<?>) self.get().getSelf();
+            proxy.destroy();
             state.set(LifecycleState.STOPPED);
         }
     }
 
     public void stop(ActorRef actorRef){
-
+        if (actorRef instanceof ActorRefProxy) {
+            ((ActorRefProxy<?>) actorRef).destroy();
+        }
     }
 
     public ActorContext getParent() {

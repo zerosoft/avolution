@@ -30,7 +30,7 @@ public class ActorContext {
     private final AtomicInteger id = new AtomicInteger(0);
 
     private boolean isRoot(){
-        return parent==null?true:false;
+        return parent == this;
     }
 
     // Actor关系管理

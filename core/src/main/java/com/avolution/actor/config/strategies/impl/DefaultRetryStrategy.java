@@ -11,7 +11,7 @@ public class DefaultRetryStrategy implements RetryStrategy {
 
     @Override
     public boolean shouldRetry(Envelope envelope) {
-        return envelope.retryCount() < maxRetries;
+        return envelope.getRetryCount() < maxRetries;
     }
 
     @Override

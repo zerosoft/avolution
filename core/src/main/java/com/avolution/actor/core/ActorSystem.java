@@ -13,6 +13,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Actor系统
+ */
 public class ActorSystem {
     private static final Logger log = LoggerFactory.getLogger(ActorSystem.class);
 
@@ -31,8 +34,8 @@ public class ActorSystem {
 
     // 系统Actor
     private  ActorRef<IDeadLetterActorMessage> deadLetters;
-    private  ActorRef systemGuardian;
-    private  ActorRef userGuardian;
+    private  ActorRef<SystemGuardianActorMessage> systemGuardian;
+    private  ActorRef<UserGuardianActorMessage> userGuardian;
 
     public ActorSystem(String name) {
         this.name = name;
@@ -44,15 +47,11 @@ public class ActorSystem {
         this.state = new AtomicReference<>(SystemState.NEW);
         this.terminationFuture = new CompletableFuture<>();
 
-//        this.systemGuardian = createSystemActor(SystemGuardian.class, "/system/guardian");
-//        this.userGuardian = createSystemActor(UserGuardian.class, "/user");
-
         start();
     }
 
-    private ActorRef createSystemActor(Class systemClass, String path) {
-        ActorRef iDeadLetterActorMessageActorRef = actorOf(Props.create(systemClass), path);
-        return iDeadLetterActorMessageActorRef;
+    private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass, String path) {
+        return actorOf(Props.create(actorClass), path);
     }
 
     private void start() {
@@ -61,6 +60,8 @@ public class ActorSystem {
         }
         // 创建系统Actor
         this.deadLetters = createSystemActor(DeadLetterActor.class, "/system/deadLetters");
+        this.systemGuardian = createSystemActor(SystemGuardianActor.class, "/system/guardian");
+        this.userGuardian = createSystemActor(UserGuardianActor.class, "/user");
     }
 
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {

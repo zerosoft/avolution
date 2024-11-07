@@ -46,7 +46,7 @@ public class Envelope<T> {
         return messageId;
     }
 
-    public T message() {
+    public T getMessage() {
         return message;
     }
 
@@ -54,19 +54,19 @@ public class Envelope<T> {
         return sender;
     }
 
-    public ActorRef<T> recipient() {
+    public ActorRef<T> getRecipient() {
         return recipient;
     }
 
-    public Instant timestamp() {
+    public Instant getTimestamp() {
         return timestamp;
     }
 
-    public MessageType messageType() {
+    public MessageType getMessageType() {
         return messageType;
     }
 
-    public int retryCount() {
+    public int getRetryCount() {
         return retryCount;
     }
 

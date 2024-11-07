@@ -158,7 +158,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
             currentMessage = message;
 
-            onReceive(currentMessage.message());
+            onReceive(currentMessage.getMessage());
 
             long processingTime = System.nanoTime() - startTime;
 

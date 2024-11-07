@@ -10,4 +10,8 @@ public interface HelloActorMessage {
 
     }
 
+    class Timer implements HelloActorMessage{
+
+    }
+
 }

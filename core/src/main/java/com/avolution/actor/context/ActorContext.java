@@ -4,6 +4,7 @@ import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.core.*;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.lifecycle.LifecycleState;
@@ -163,6 +164,8 @@ public class ActorContext {
         if (actorRef instanceof ActorRefProxy) {
             ((ActorRefProxy<?>) actorRef).destroy();
         }
+        // Send PoisonPill message to the actor's mailbox
+        actorRef.tell((Object) PoisonPill.INSTANCE, ActorRef.noSender());
     }
 
     public ActorContext getParent() {

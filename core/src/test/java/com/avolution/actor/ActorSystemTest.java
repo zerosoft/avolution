@@ -21,7 +21,7 @@ public class ActorSystemTest {
 
     @BeforeEach
     void setUp() {
-        system = new ActorSystem("mySystem");
+        system = ActorSystem.create("mySystem");
     }
 
     @Test

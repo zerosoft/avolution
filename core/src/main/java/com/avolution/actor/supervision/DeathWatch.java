@@ -1,18 +1,25 @@
 package com.avolution.actor.supervision;
 
+
+
+/**
+ * Actor死亡监视器
+ */
+import com.avolution.actor.message.Terminated;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Actor死亡监视器
- */
 public class DeathWatch {
+    private static final Logger logger = LoggerFactory.getLogger(DeathWatch.class);
+
     private final ActorSystem system;
-    private final Map<ActorRef, Set<ActorRef>> watchedBy;  // actor -> watchers
-    private final Map<ActorRef, Set<ActorRef>> watching;   // watcher -> watched actors
+    private final Map<ActorRef, Set<ActorRef>> watchedBy;
+    private final Map<ActorRef, Set<ActorRef>> watching;
 
     public DeathWatch(ActorSystem system) {
         this.system = system;
@@ -20,92 +27,71 @@ public class DeathWatch {
         this.watching = new ConcurrentHashMap<>();
     }
 
-    /**
-     * 注册监视关系
-     */
-    public void watch(ActorRef watcher, ActorRef watched) {
-        if (watcher == watched) return;  // 不能自己监视自己
+    public synchronized void watch(ActorRef watcher, ActorRef watched) {
+        if (watcher == null || watched == null || watcher == watched) {
+            return;
+        }
 
-        watchedBy.computeIfAbsent(watched, k -> ConcurrentHashMap.newKeySet())
-                .add(watcher);
-        watching.computeIfAbsent(watcher, k -> ConcurrentHashMap.newKeySet())
-                .add(watched);
+        if (watched.isTerminated()) {
+            notifyWatcher(watcher, new Terminated(watched.path(), "Actor already terminated", false));
+            return;
+        }
+
+        watchedBy.computeIfAbsent(watched, k -> ConcurrentHashMap.newKeySet()).add(watcher);
+        watching.computeIfAbsent(watcher, k -> ConcurrentHashMap.newKeySet()).add(watched);
+
+        logger.debug("Actor {} now watching {}", watcher.path(), watched.path());
     }
 
-    /**
-     * 取消监视关系
-     */
-    public void unwatch(ActorRef watcher, ActorRef watched) {
+    public synchronized void unwatch(ActorRef watcher, ActorRef watched) {
+        if (watcher == null || watched == null) {
+            return;
+        }
+
         Optional.ofNullable(watchedBy.get(watched))
-                .ifPresent(watchers -> watchers.remove(watcher));
+                .ifPresent(watchers -> {
+                    watchers.remove(watcher);
+                    if (watchers.isEmpty()) {
+                        watchedBy.remove(watched);
+                    }
+                });
+
         Optional.ofNullable(watching.get(watcher))
-                .ifPresent(watchedActors -> watchedActors.remove(watched));
+                .ifPresent(watchedActors -> {
+                    watchedActors.remove(watched);
+                    if (watchedActors.isEmpty()) {
+                        watching.remove(watcher);
+                    }
+                });
     }
 
-    /**
-     * 处理Actor终止
-     */
     public void terminated(ActorRef actor) {
-        // 通知所有监视者
-        Optional.ofNullable(watchedBy.remove(actor))
-                .ifPresent(watchers ->
-                        watchers.forEach(watcher ->
-                                notifyWatcher(watcher, actor)));
+        if (actor == null) return;
 
-        // 清理监视关系
-        Optional.ofNullable(watching.remove(actor))
-                .ifPresent(watchedActors ->
-                        watchedActors.forEach(watched ->
-                                Optional.ofNullable(watchedBy.get(watched))
-                                        .ifPresent(ws -> ws.remove(actor))));
-    }
-
-    /**
-     * 获取监视者列表
-     */
-    public Set<ActorRef> getWatchers(ActorRef actor) {
-        return watchedBy.getOrDefault(actor, Collections.emptySet());
-    }
-
-    /**
-     * 获取被监视者列表
-     */
-    public Set<ActorRef> getWatched(ActorRef actor) {
-        return watching.getOrDefault(actor, Collections.emptySet());
-    }
-
-    private void notifyWatcher(ActorRef watcher, ActorRef terminated) {
-        watcher.tell(new Terminated(terminated), ActorRef.noSender());
-    }
-
-    /**
-     * Actor终止通知消息
-     */
-    public static class Terminated {
-        private final ActorRef actor;
-        private final boolean existenceConfirmed;
-        private final boolean addressTerminated;
-
-        public Terminated(ActorRef actor) {
-            this(actor, true, true);
+        Set<ActorRef> watchers = watchedBy.remove(actor);
+        if (watchers != null) {
+            Terminated terminated = new Terminated(actor.path(), "Normal termination", true);
+            watchers.forEach(watcher -> notifyWatcher(watcher, terminated));
         }
 
-        public Terminated(ActorRef actor, boolean existenceConfirmed, boolean addressTerminated) {
-            this.actor = actor;
-            this.existenceConfirmed = existenceConfirmed;
-            this.addressTerminated = addressTerminated;
+        Set<ActorRef> watchedActors = watching.remove(actor);
+        if (watchedActors != null) {
+            watchedActors.forEach(watched ->
+                    Optional.ofNullable(watchedBy.get(watched))
+                            .ifPresent(ws -> ws.remove(actor))
+            );
         }
 
-        public ActorRef getActor() {
-            return actor;
-        }
+        logger.info("Actor {} terminated, notified {} watchers",
+                actor.path(), watchers != null ? watchers.size() : 0);
+    }
 
-        public boolean isExistenceConfirmed() {
-            return existenceConfirmed;
-        }
-
-        public boolean isAddressTerminated() {
-            return addressTerminated;
+    private void notifyWatcher(ActorRef watcher, Terminated terminated) {
+        try {
+            watcher.tell(terminated, ActorRef.noSender());
+        } catch (Exception e) {
+            logger.error("Failed to notify watcher {} about termination of {}",
+                    watcher.path(), terminated.getActorPath(), e);
         }
     }
 }

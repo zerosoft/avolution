@@ -22,7 +22,7 @@ public class ActorShutdownTest {
 
     @BeforeEach
     void setUp() {
-        system = new ActorSystem("ShutdownTestSystem");
+        system = ActorSystem.create("ShutdownTestSystem");
     }
 
    public static class ShutdownTestActor extends AbstractActor<ShutdownTestActor.Message> {

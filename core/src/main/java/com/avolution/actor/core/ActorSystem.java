@@ -1,6 +1,7 @@
 package com.avolution.actor.core;
 
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
+import com.avolution.actor.context.ActorContextManager;
 import com.avolution.actor.dispatch.Dispatcher;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
@@ -14,16 +15,65 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Actor系统
+ * Actor系统的核心实现类，负责管理整个Actor生态系统
+ *
+ * 主要功能：
+ * 1. Actor生命周期管理
+ *    - 创建和停止Actor
+ *    - 维护Actor层级关系
+ *    - 管理Actor状态转换
+ *
+ * 2. 消息分发
+ *    - 提供消息调度器
+ *    - 处理死信消息
+ *    - 支持定时消息
+ *
+ * 3. 监督管理
+ *    - 实现监督策略
+ *    - 处理Actor故障
+ *    - 提供死亡监控
+ *
+ * 4. 系统服务
+ *    - 死信Actor服务
+ *    - 系统守护Actor
+ *    - 调度服务
+ *
+ * 核心组件：
+ * @field name          - 系统唯一标识名
+ * @field actors        - 管理所有Actor引用
+ * @field contexts      - 管理Actor上下文
+ * @field dispatcher    - 消息调度器
+ * @field deathWatch   - 死亡监控服务
+ * @field scheduler    - 调度服务
+ * @field state        - 系统状态
+ * @field deadLetters  - 死信处理Actor
+ *
+ * 使用示例：
+ * <pre>
+ * ActorSystem system = ActorSystem.create("my-system");
+ * ActorRef<MyMessage> actor = system.actorOf(Props.create(MyActor.class), "myActor");
+ * actor.tell(new MyMessage(), ActorRef.noSender());
+ * system.terminate();
+ * </pre>
+ *
+ * @see ActorRef
+ * @see ActorContext
+ * @see Dispatcher
+ * @see DeathWatch
  */
 public class ActorSystem {
     private static final Logger log = LoggerFactory.getLogger(ActorSystem.class);
+
+    private static final AtomicReference<ActorSystem> INSTANCE = new AtomicReference<>();
+    private static final ConcurrentHashMap<String, ActorSystem> NAMED_SYSTEMS = new ConcurrentHashMap<>();
 
     private final String name;
 
     private final Map<String, ActorRef<?>> actors;
 
-    private final Map<String, ActorContext> contexts;
+//    private final Map<String, ActorContext> contexts;
+
+    private final ActorContextManager contextManager;
 
     private final Dispatcher dispatcher;
     private final DeathWatch deathWatch;
@@ -37,16 +87,47 @@ public class ActorSystem {
     private  ActorRef<SystemGuardianActorMessage> systemGuardian;
     private  ActorRef<UserGuardianActorMessage> userGuardian;
 
-    public ActorSystem(String name) {
+    /**
+     * 创建或获取默认的ActorSystem实例
+     * @return 默认的ActorSystem实例
+     */
+    public static ActorSystem create() {
+        return create("default");
+    }
+
+    /**
+     * 创建或获取指定名称的ActorSystem实例
+     * @param name 系统名称
+     * @return ActorSystem实例
+     * @throws IllegalStateException 如果尝试创建同名的系统
+     */
+    public static synchronized ActorSystem create(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("System name cannot be null or empty");
+        }
+
+        return NAMED_SYSTEMS.computeIfAbsent(name, key -> {
+            if (INSTANCE.get() == null) {
+                ActorSystem system = new ActorSystem(key);
+                if (INSTANCE.compareAndSet(null, system)) {
+                    return system;
+                }
+            }
+            throw new IllegalStateException(
+                    "Another ActorSystem is already active. Only one ActorSystem can exist in a JVM.");
+        });
+    }
+
+
+    private ActorSystem(String name) {
         this.name = name;
         this.actors = new ConcurrentHashMap<>();
-        this.contexts = new ConcurrentHashMap<>();
         this.dispatcher = new Dispatcher();
         this.deathWatch = new DeathWatch(this);
         this.scheduler = new VirtualThreadScheduler();
         this.state = new AtomicReference<>(SystemState.NEW);
         this.terminationFuture = new CompletableFuture<>();
-
+        this.contextManager = new ActorContextManager(this);
         start();
     }
 
@@ -73,25 +154,25 @@ public class ActorSystem {
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
         }
+
 //        validateActorName(name);
 
         String path = "/user/" + name + "/" + UUID.randomUUID().toString();
 
         // 检查是否已存在
-        if (actors.containsKey(path)) {
-            throw new ActorCreationException("Actor '" + name + "' already exists");
+        if (contextManager.hasContext(path)) {
+            throw new ActorCreationException("Actor already exists at path: " + path);
         }
 
         try {
             AbstractActor<T> actor = props.newActor();
-            ActorContext context = new ActorContext(path, this, actor,
-                    actorContextRef != null ? actorContextRef : null, props);
+            ActorContext context = new ActorContext(path, this, actor, actorContextRef != null ? actorContextRef : null, props);
 
             ActorRefProxy<T> actorRef = new ActorRefProxy<>(actor);
 
             // 注册Actor
             actors.put(path, actorRef);
-            contexts.put(path, context);
+            contextManager.addContext(path, context);
 
             // 初始化Actor
             actor.initialize(context);
@@ -104,19 +185,13 @@ public class ActorSystem {
         }
     }
 
-    public  ActorContext getContext(String path) {
-        return contexts.get(path);
-    }
-
     public void stop(ActorRef actor) {
         String path = actor.path();
         actors.remove(path);
-        ActorContext context = contexts.remove(path);
-        if (context != null) {
+        contextManager.getContext(path).ifPresent(context -> {
             context.stop();
-//            context.getChildren().values().forEach(this::stop);
-        }
-//        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+            contextManager.removeContext(path);
+        });
     }
 
     public CompletableFuture<Void> terminate() {
@@ -134,6 +209,15 @@ public class ActorSystem {
                 shutdownInternals();
 
                 // 4. 设置终止状态
+                state.set(SystemState.TERMINATED);
+                terminationFuture.complete(null);
+
+                // 清理系统实例
+                NAMED_SYSTEMS.remove(this.name);
+                if (INSTANCE.get() == this) {
+                    INSTANCE.set(null);
+                }
+
                 state.set(SystemState.TERMINATED);
                 terminationFuture.complete(null);
 
@@ -193,7 +277,7 @@ public class ActorSystem {
 
             // 清理其他资源
             actors.clear();
-            contexts.clear();
+            contextManager.terminateAll();
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -220,5 +304,9 @@ public class ActorSystem {
 
     public ScheduledExecutorService scheduler() {
         return scheduler;
+    }
+
+    public ActorRef<IDeadLetterActorMessage> getDeadLetters() {
+        return deadLetters;
     }
 }

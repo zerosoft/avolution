@@ -6,7 +6,6 @@ import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.ReceiveTimeout;
-import com.avolution.actor.message.Signal;
 import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.lifecycle.LifecycleState;
@@ -47,7 +46,7 @@ public class ActorContext {
     private final SupervisorStrategy supervisorStrategy;
     
     // 消息处理
-    private final Mailbox mailbox;
+    protected final Mailbox mailbox;
 
     private final AtomicReference<LifecycleState> state;
 
@@ -144,6 +143,11 @@ public class ActorContext {
     public void unwatch(ActorRef<?> other) {
         watchedActors.remove(other);
         system.deathWatch().unwatch(self.get(), other);
+    }
+
+    public void notifyWatchers(ActorRef<?> other) {
+        watchedActors.remove(other);
+        system.deathWatch().terminated(other);
     }
 
     public void setReceiveTimeout(Duration timeout) {

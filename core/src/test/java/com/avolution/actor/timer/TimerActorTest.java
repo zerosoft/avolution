@@ -12,7 +12,7 @@ public class TimerActorTest {
 
     @Test
     void testActorTimer() throws Exception {
-        ActorSystem system = new ActorSystem("TimerTestSystem");
+        ActorSystem system = ActorSystem.create("TimerTestSystem");
 
         try {
             // 创建带定时器的Actor

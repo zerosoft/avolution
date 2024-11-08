@@ -9,17 +9,22 @@ import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
+import com.avolution.actor.metrics.ActorMetricsCollector;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -28,7 +33,6 @@ import java.util.function.Consumer;
  */
 public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T> {
     Logger logger=org.slf4j.LoggerFactory.getLogger(AbstractActor.class);
-
     /**
      * Actor上下文
      */
@@ -45,6 +49,13 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      * 消息处理器
      */
     private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
+
+    // 死信相关字段
+    private final ConcurrentLinkedQueue<IDeadLetterActorMessage.DeadLetter> deadLetters = new ConcurrentLinkedQueue<>();
+    private static final int MAX_DEAD_LETTERS = 1000;
+    private final AtomicInteger deadLetterCount = new AtomicInteger(0);
+
+    private ActorMetricsCollector metricsCollector;
 
     public AbstractActor() {
         registerHandlers();
@@ -70,7 +81,6 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         }
     }
 
-
     /**
      * 处理接收到的消息
      *
@@ -87,6 +97,42 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     public void unhandled(T message) {
         System.out.println("Unhandled message: " + message);
+    }
+
+    /**
+     * 处理死信消息
+     */
+    protected void handleDeadLetter(Envelope<?> envelope) {
+        if (context == null || context.system() == null) {
+            return;
+        }
+
+        IDeadLetterActorMessage.DeadLetter deadLetter = new IDeadLetterActorMessage.DeadLetter(
+                envelope.getMessage(),
+                envelope.getSender().path(),
+                envelope.getRecipient().path(),
+                LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                envelope.getMessageType().toString(),
+                envelope.getRetryCount()
+        );
+
+        // 记录死信
+        logger.warn("Dead letter received: {}", deadLetter);
+
+        // 维护死信队列
+        deadLetters.offer(deadLetter);
+        if (deadLetters.size() > MAX_DEAD_LETTERS) {
+            deadLetters.poll();
+        }
+
+        // 统计
+        int count = deadLetterCount.incrementAndGet();
+        if (count % 100 == 0) {
+            logger.warn("Dead letter count reached: {}", count);
+        }
+
+        // 发送到系统的死信Actor
+        context.system().getDeadLetters().tell(deadLetter, getSelf());
     }
 
     /**
@@ -180,30 +226,37 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     public void initialize(ActorContext context) {
         this.context = context;
         this.lifecycleState = LifecycleState.STARTED;
+        this.metricsCollector = new ActorMetricsCollector(path());
     }
 
     @Override
     public void handle(Envelope<T> message) throws Exception {
+
+        if (isTerminated()) {
+            handleDeadLetter(message);
+            return;
+        }
+
+        long startTime = System.nanoTime();
+        boolean success = true;
+
         try {
             // 记录消息处理时间
-            long startTime = System.nanoTime();
-
             currentMessage = message;
-
             // 处理系统信号
             if (message.getMessage() instanceof Signal signal) {
                 signal.handle(this);
-                return;
+            }else {
+                onReceive(currentMessage.getMessage());
             }
-
-            onReceive(currentMessage.getMessage());
-
-            long processingTime = System.nanoTime() - startTime;
-
         } catch (Exception e) {
+            success=false;
             context.handleFailure(e, message);
         } finally {
             currentMessage = null;
+            if (metricsCollector != null) {
+                metricsCollector.recordMessage(startTime, success);
+            }
         }
     }
 
@@ -263,12 +316,14 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         // 3. 更新生命周期状态
         lifecycleState = LifecycleState.STOPPED;
 
-        // 4. 通知死信系统
-        if (context != null && context.system() != null) {
-//            context.system().deadLetters().tell(
-//                    new IDeadLetterActorMessage.DeadLetter(self(), "Actor destroyed"),
-//                    ActorRef.noSender()
-//            );
+        // 清理死信队列
+        deadLetters.clear();
+        deadLetterCount.set(0);
+
+        // 如果有未处理的当前消息，将其作为死信处理
+        if (currentMessage != null) {
+            handleDeadLetter(currentMessage);
+            currentMessage = null;
         }
     }
 

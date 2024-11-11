@@ -1,7 +1,9 @@
 package com.avolution.actor.message;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.avolution.actor.core.ActorRef;
 
@@ -24,6 +26,8 @@ public class Envelope<T> {
 
     private final int retryCount;
 
+    private final Set<String> processedActors;
+
     // 直接使用构造方法替代Builder
     public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient, MessageType messageType, int retryCount) {
         if (message == null) {
@@ -39,6 +43,7 @@ public class Envelope<T> {
         this.timestamp = Instant.now();
         this.messageType = messageType != null ? messageType : MessageType.NORMAL;
         this.retryCount = retryCount;
+        this.processedActors = ConcurrentHashMap.newKeySet();
     }
 
     // Getters
@@ -78,4 +83,14 @@ public class Envelope<T> {
     public boolean isSystemMessage() {
         return messageType == MessageType.SYSTEM;
     }
+
+    public void markProcessed(String actorPath) {
+        processedActors.add(actorPath);
+    }
+
+    public boolean hasBeenProcessedBy(String actorPath) {
+        return processedActors.contains(actorPath);
+    }
+
+
 }

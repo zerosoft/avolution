@@ -157,7 +157,7 @@ public class ActorSystem {
 
 //        validateActorName(name);
 
-        String path = "/user/" + name + "/" + UUID.randomUUID().toString();
+        String path = "/user/" + name + "/" + UUID.randomUUID();
 
         // 检查是否已存在
         if (contextManager.hasContext(path)) {
@@ -302,7 +302,7 @@ public class ActorSystem {
         return deathWatch;
     }
 
-    public ScheduledExecutorService scheduler() {
+    public ScheduledExecutorService getScheduler() {
         return scheduler;
     }
 

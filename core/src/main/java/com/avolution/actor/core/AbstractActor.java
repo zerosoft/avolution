@@ -10,6 +10,7 @@ import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.metrics.ActorMetricsCollector;
+import com.avolution.actor.pattern.AskPattern;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 
@@ -162,6 +163,9 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     @Override
     public void tell(T message, ActorRef sender) {
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
+        }
         if (!isTerminated()) {
             Envelope<T> envelope=new Envelope<>(message,sender,this,MessageType.NORMAL,1);
             context.tell(envelope);
@@ -171,7 +175,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     @Override
     public void tell(Signal message, ActorRef sender) {
         if (!isTerminated()) {
-            Envelope envelope=new Envelope(message,sender,this,MessageType.SYSTEM,1);
+            Envelope<?> envelope=new Envelope(message,sender,this,MessageType.SYSTEM,1);
             context.tell(envelope);
         }
     }
@@ -231,26 +235,34 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     @Override
     public void handle(Envelope<T> message) throws Exception {
+        // 检查是否已经处理过该消息
+        if (message.hasBeenProcessedBy(path())) {
+            logger.warn("Detected circular message delivery: {} in actor: {}",
+                    message.getMessage().getClass().getSimpleName(), path());
+            handleDeadLetter(message);
+            return;
+        }
 
         if (isTerminated()) {
             handleDeadLetter(message);
             return;
         }
 
+        // 标记消息已被当前 Actor 处理
+        message.markProcessed(path());
+
         long startTime = System.nanoTime();
         boolean success = true;
 
         try {
-            // 记录消息处理时间
             currentMessage = message;
-            // 处理系统信号
             if (message.getMessage() instanceof Signal signal) {
                 signal.handle(this);
-            }else {
+            } else {
                 onReceive(currentMessage.getMessage());
             }
         } catch (Exception e) {
-            success=false;
+            success = false;
             context.handleFailure(e, message);
         } finally {
             currentMessage = null;
@@ -261,34 +273,11 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
     public <R> CompletableFuture<R> ask(T message, Duration timeout) {
-        CompletableFuture<R> future = new CompletableFuture<>();
-
-        // 创建临时Actor接收响应
-        Props<R> tempProps = Props.create(() -> new AbstractActor<R>() {
-            @Override
-            public void onReceive(R message) {
-                future.complete(message);
-                context.stop();
-            }
-        });
-
-        // 创建临时Actor
-        ActorRef<R> tempActor = context.actorOf(tempProps, "temp-" + UUID.randomUUID());
-
-        // 发送消息
-        tell(message, tempActor);
-
-        // 设置超时
-        context.system().scheduler().schedule(() -> {
-            if (!future.isDone()) {
-                future.completeExceptionally(
-                        new AskTimeoutException("Ask timed out after " + timeout)
-                );
-                context.stop(tempActor);
-            }
-        }, 5L, TimeUnit.SECONDS);
-
-        return future;
+        return AskPattern.ask(
+                this,
+                timeout,
+                replyTo -> message
+        );
     }
 
     public <R> CompletableFuture<R> ask(T message) {

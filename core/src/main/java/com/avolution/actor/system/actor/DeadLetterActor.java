@@ -55,7 +55,7 @@ public class DeadLetterActor extends AbstractActor<IDeadLetterActorMessage> {
     }
 
     @Override
-    protected void onPostStop() {
+    public void onPostStop() {
         log.info("DeadLetterActor stopped. Total dead letters processed: {}",
                 deadLetterCount.get());
         recentDeadLetters.clear();

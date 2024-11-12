@@ -44,7 +44,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
      */
     protected LifecycleState lifecycleState = LifecycleState.NEW;
     // 持有唯一的ActorRefProxy引用
-    private ActorRefProxy<T> selfRef;
+    private LocalActorRef<T> selfRef;
     /**
      * 消息处理器
      */
@@ -63,9 +63,14 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         this.strategy = strategy;
     }
 
-
     public AbstractActor() {
         registerHandlers();
+    }
+
+    public void initialize(ActorContext context) {
+        this.context = context;
+        this.lifecycleState = LifecycleState.STARTED;
+        this.metricsCollector = new ActorMetricsCollector(path());
     }
 
     private void registerHandlers() {
@@ -142,6 +147,8 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         context.system().getDeadLetters().tell(deadLetter, getSelf());
     }
 
+
+
     /**
      * 获取消息发送者
      * @return
@@ -151,7 +158,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
 
-    protected void setSelfRef(ActorRefProxy<T> ref) {
+    protected void setSelfRef(LocalActorRef<T> ref) {
         if (this.selfRef == null) {
             this.selfRef = ref;
         }
@@ -203,12 +210,8 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         return lifecycleState == LifecycleState.STOPPED;
     }
 
-    // Actor正式初始换之前的
-    public void preStart() {
-
-    }
     // 生命周期回调方法
-    public void postStop() {
+     private void actorStop() {
         try {
             // 执行子类的清理逻辑
             onPostStop();
@@ -218,40 +221,46 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         }
     }
 
-    /**
-     * 子类可以重写此方法实现自定义清理逻辑
-     */
-    protected void onPostStop() {
-        // 默认实现为空
+    // Actor正式初始换之前的
+    public void preStart() {
+        if (strategy!=null){
+            strategy.onPreStart(this);
+        }
     }
 
-    public void preRestart(Throwable reason) {
-        // 在重启之前的处理逻辑
+
+    public void onPostStop() {
+        if (strategy!=null){
+            strategy.onPostStop(this);
+        }
     }
 
-    public void postRestart(Throwable reason) {
+    public void onPreRestart(Throwable reason) {
+        if (strategy!=null){
+            strategy.onPreRestart(reason,this);
+        }
+    }
+
+    public void onPostRestart(Throwable reason) {
         // 在重启之后的处理逻辑
+        if (strategy!=null){
+            strategy.onPostRestart(reason,this);
+        }
     }
 
-    public void initialize(ActorContext context) {
-        this.context = context;
-        this.lifecycleState = LifecycleState.STARTED;
-        this.metricsCollector = new ActorMetricsCollector(path());
-    }
+
 
     @Override
     public void handle(Envelope<T> message) throws Exception {
         // 检查是否已经处理过该消息
         if (message.hasBeenProcessedBy(path())) {
-            logger.warn("Detected circular message delivery: {} in actor: {}",
-                    message.getMessage().getClass().getSimpleName(), path());
+            logger.warn("Detected circular message delivery: {} in actor: {}", message.getMessage().getClass().getSimpleName(), path());
             handleDeadLetter(message);
             return;
         }
 
         if (isTerminated()) {
-            logger.warn("Actor is terminated, cannot process message: {}",
-                    message.getMessage().getClass().getSimpleName());
+            logger.warn("Actor is terminated, cannot process message: {}", message.getMessage().getClass().getSimpleName());
             handleDeadLetter(message);
             return;
         }
@@ -304,9 +313,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         // 2. 清理上下文引用
         if (context != null) {
             // 停止所有子Actor
-            context.getChildren().values().forEach(child -> {
-                context.stop(child);
-            });
+            context.stop();
             context = null;
         }
 
@@ -342,7 +349,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
                     }
                 }
                 // 4. 销毁资源
-                postStop();
+                actorStop();
 
             } catch (Exception e) {
                 logger.error("Error during actor shutdown: {}", e.getMessage(), e);

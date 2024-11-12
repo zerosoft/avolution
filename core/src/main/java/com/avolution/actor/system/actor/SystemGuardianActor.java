@@ -43,13 +43,13 @@ public class SystemGuardianActor extends AbstractActor<SystemGuardianActorMessag
     }
 
     @Override
-    public void preRestart(Throwable reason) {
+    public void onPreRestart(Throwable reason) {
         // 在重启之前的处理逻辑
         System.out.println("SystemGuardianActor is restarting due to: " + reason.getMessage());
     }
 
     @Override
-    public void postRestart(Throwable reason) {
+    public void onPostRestart(Throwable reason) {
         // 在重启之后的处理逻辑
         System.out.println("SystemGuardianActor has restarted.");
     }

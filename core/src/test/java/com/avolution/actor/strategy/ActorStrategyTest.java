@@ -132,12 +132,12 @@ class ActorStrategyTest {
         }
 
         @Override
-        public void preRestart(Throwable reason) {
+        public void onPreRestart(Throwable reason) {
             preRestartCalled = true;
         }
 
         @Override
-        public void postRestart(Throwable reason) {
+        public void onPostRestart(Throwable reason) {
             postRestartCalled = true;
         }
 

@@ -159,12 +159,12 @@ class ActorContextTest {
         }
 
         @Override
-        public void preRestart(Throwable reason) {
+        public void onPreRestart(Throwable reason) {
             preRestartCalled.set(true);
         }
 
         @Override
-        public void postRestart(Throwable reason) {
+        public void onPostRestart(Throwable reason) {
             postRestartCalled.set(true);
         }
 

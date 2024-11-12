@@ -6,7 +6,7 @@ import com.avolution.actor.exception.ActorStopException;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
-import com.avolution.actor.message.ReceiveTimeout;
+import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.message.SupervisionMessage;
 import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
@@ -14,7 +14,6 @@ import com.avolution.actor.lifecycle.LifecycleState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,17 +23,16 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Actor上下文
  */
-public class ActorContext {
+public class ActorContext  {
     private static final Logger logger = LoggerFactory.getLogger(ActorContext.class);
-
+    // Actor路径
     private final String path;
+    // Actor系统
     private final ActorSystem system;
-
-    private final WeakReference<AbstractActor<?>> self;
+    // Actor实例,强绑定
+    private final AbstractActor<?> self;
 
     private final ActorContext parent;
-
-    private final AtomicInteger id = new AtomicInteger(0);
 
     private boolean isRoot(){
         return parent == this;
@@ -53,18 +51,15 @@ public class ActorContext {
     private final AtomicReference<LifecycleState> state;
 
     private final ScheduledExecutorService scheduler;
-    // 超时控制
-    private volatile Duration receiveTimeout;
-    private volatile ScheduledFuture<?> receiveTimeoutTask;
 
     // 添加新的计时器管理
     private final Map<String, ScheduledFuture<?>> timers = new ConcurrentHashMap<>();
 
     public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorContext parent,
                         Props<?> props) {
-        this.path = path + "/" + generateUniqueId();
+        this.path = path;
         this.system = system;
-        this.self = new WeakReference<>(self);
+        this.self = self;
         this.parent = parent;
         this.children = new ConcurrentHashMap<>();
         this.watchedActors = ConcurrentHashMap.newKeySet();
@@ -76,17 +71,10 @@ public class ActorContext {
         initializeActor();
     }
 
-    private int generateUniqueId() {
-        return id.incrementAndGet();
-    }
-
     private void initializeActor() {
-        AbstractActor<?> actor = self.get();
-        if (actor != null) {
-            actor.initialize(this);
-            if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
-                actor.preStart();
-            }
+        self.initialize(this);
+        if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTED)) {
+            self.preStart();
         }
     }
 
@@ -95,7 +83,7 @@ public class ActorContext {
             // 将消息放入邮箱
             mailbox.enqueue(envelope);
             // 如果邮箱中只有当前消息，则立即处理
-            system.dispatcher().dispatch(self.get().path(), this::processMailbox);
+            system.dispatcher().dispatch(path, this::processMailbox);
         }
     }
 
@@ -103,10 +91,10 @@ public class ActorContext {
         if (state.get() != LifecycleState.STARTED) {
             return;
         }
-        mailbox.process(self.get());
+        mailbox.process(self);
 
         if (mailbox.hasMessages()) {
-            system.dispatcher().dispatch(self.get().path(), this::processMailbox);
+            system.dispatcher().dispatch(path, this::processMailbox);
         }
     }
 
@@ -139,12 +127,12 @@ public class ActorContext {
 
     public void watch(ActorRef<?> other) {
         watchedActors.add(other);
-        system.deathWatch().watch(self.get(), other);
+        system.deathWatch().watch(self, other);
     }
 
     public void unwatch(ActorRef<?> other) {
         watchedActors.remove(other);
-        system.deathWatch().unwatch(self.get(), other);
+        system.deathWatch().unwatch(self, other);
     }
 
     public void notifyWatchers(ActorRef<?> other) {
@@ -152,20 +140,6 @@ public class ActorContext {
         system.deathWatch().terminated(other);
     }
 
-    public void setReceiveTimeout(Duration timeout) {
-        if (receiveTimeoutTask != null) {
-            receiveTimeoutTask.cancel(false);
-        }
-
-        if (timeout != null && !timeout.isZero()) {
-            this.receiveTimeout = timeout;
-            this.receiveTimeoutTask = scheduler.schedule(() -> {
-                if (!mailbox.hasMessages()) {
-                    self.get().tell(ReceiveTimeout.INSTANCE, ActorRef.noSender());
-                }
-            }, timeout.toMillis(), TimeUnit.MILLISECONDS);
-        }
-    }
 
     public SupervisorStrategy supervisorStrategy() {
         return supervisorStrategy;
@@ -199,42 +173,31 @@ public class ActorContext {
 
     public void stop() {
         if (state.compareAndSet(LifecycleState.STARTED, LifecycleState.STOPPING)) {
+
             // 停止所有子Actor
             new ArrayList<>(children.values()).forEach(child -> {
-                system.stop(child);
+                child.tell(PoisonPill.INSTANCE, self.getSelf());
+                children.remove(child.getSelf().name());
             });
 
             // 取消所有计时器
             timers.values().forEach(timer -> timer.cancel(false));
             timers.clear();
 
-            // 停止接收超时任务
-            if (receiveTimeoutTask != null) {
-                receiveTimeoutTask.cancel(false);
-            }
-
             // 关闭调度器
             scheduler.shutdown();
-
-            // 调用Actor的停止回调
-            AbstractActor<?> actor = self.get();
-            if (actor != null) {
-                actor.postStop();
-            }
-
+            // 从系统中注销Actor
+            system.unregisterActor(path);
             state.set(LifecycleState.STOPPED);
         }
     }
 
     // 添加重启逻辑
     public void restart(Throwable reason) {
-        AbstractActor<?> actor = self.get();
-        if (actor != null) {
-            actor.preRestart(reason);
-            stop();
-            initializeActor();
-            actor.postRestart(reason);
-        }
+        self.onPreRestart(reason);
+        stop();
+        initializeActor();
+        self.onPostRestart(reason);
     }
 
     public void stop(ActorRef actorRef) {
@@ -246,29 +209,19 @@ public class ActorContext {
         String actorName = actorRef.name();
 
         try {
-            // 1. 检查是否为子Actor
+            // 检查是否为子Actor
             if (!children.containsKey(actorName)) {
                 logger.warn("Attempting to stop non-child actor: {}", actorPath);
                 return;
             }
 
-            // 2. 获取Actor实例并执行停止前的清理
-            if (actorRef instanceof AbstractActor<?> actor) {
-                // 处理未完成的消息
-                actor.shutdown();
-            }
-
-            // 4. 从父Actor的子列表中移除
-            children.remove(actorName);
-
-            // 5. 清理系统资源
-            system.stop(actorRef);
+            // 处理未完成的消息
+            actorRef.tell(PoisonPill.INSTANCE, ActorRef.noSender());
 
             logger.debug("Successfully stopped actor: {}", actorPath);
         } catch (Exception e) {
             logger.error("Error while stopping actor: {}", actorPath, e);
             // 确保即使发生错误也能移除Actor
-            children.remove(actorName);
             throw new ActorStopException("Failed to stop actor: " + actorPath, e);
         }
     }
@@ -279,7 +232,7 @@ public class ActorContext {
 
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
-        String childPath = self.get().path() + "/" + name;
+        String childPath = path + "/" + name;
         ActorRef<R> child = system.actorOf(props, childPath,this);
         return child;
     }
@@ -300,7 +253,7 @@ public class ActorContext {
     public <T> void scheduleOnce(String key, Duration delay, T message) {
         cancelTimer(key);
         ScheduledFuture<?> timer = scheduler.schedule(() -> {
-            Envelope envelope=new Envelope(message,ActorRef.noSender(),self.get(), MessageType.NORMAL,1);
+            Envelope envelope=new Envelope(message,ActorRef.noSender(),self.getSelf(), MessageType.NORMAL,1);
             tell(envelope);
         }, delay.toMillis(), TimeUnit.MILLISECONDS);
         timers.put(key, timer);
@@ -309,7 +262,7 @@ public class ActorContext {
     public void scheduleRepeatedly(String key, Duration initialDelay, Duration interval, Object message) {
         cancelTimer(key);
         ScheduledFuture<?> timer = scheduler.scheduleAtFixedRate(() -> {
-            Envelope envelope=new Envelope(message,ActorRef.noSender(),self.get(), MessageType.NORMAL,1);
+            Envelope envelope=new Envelope(message,ActorRef.noSender(),self.getSelf(), MessageType.NORMAL,1);
             tell(envelope);
         }, initialDelay.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
         timers.put(key, timer);
@@ -323,23 +276,27 @@ public class ActorContext {
     }
 
     public void resume() {
-        if (self.get() instanceof AbstractActor actor) {
+        if (self.getSelf() instanceof AbstractActor actor) {
 //            actor.resume();
         }
     }
 
     public void escalate(Throwable cause) {
         if (parent != null) {
-            SupervisionMessage supervisionMessage = new SupervisionMessage(self.get(), cause);
-            Envelope envelope=new Envelope(supervisionMessage,self.get(),parent.self.get(), MessageType.NORMAL,1);
+            SupervisionMessage supervisionMessage = new SupervisionMessage(self.getSelf(), cause);
+            Envelope envelope=new Envelope(supervisionMessage,self.getSelf(),parent.self.getSelf(), MessageType.NORMAL,1);
             parent.tell(envelope);
         } else {
             logger.error("No parent to escalate error to, stopping self", cause);
-            stop(self.get());
+            stop(self.getSelf());
         }
     }
 
     public void setSupervisorStrategy(SupervisorStrategy supervisorStrategy) {
         this.supervisorStrategy=supervisorStrategy;
+    }
+
+    public ActorRef getSelf() {
+        return self.getSelf();
     }
 }

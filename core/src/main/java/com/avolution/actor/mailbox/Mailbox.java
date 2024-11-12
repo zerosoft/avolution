@@ -77,9 +77,12 @@ public class Mailbox {
                     if (msg == null){
                         break;
                     }
+
                     try {
                         long nanoTime = System.nanoTime();
+                        // 处理消息
                         handler.handle(msg);
+
                         metrics.messageProcessed(System.nanoTime()-nanoTime);
                     } catch (Exception e) {
                         metrics.messageFailure();

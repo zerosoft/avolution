@@ -63,17 +63,17 @@ public class UserGuardianActor extends AbstractActor<UserGuardianActorMessage> {
     }
 
     @Override
-    public void postStop() {
+    public void onPostStop() {
         System.out.println("UserGuardianActor stopped.");
     }
 
     @Override
-    public void preRestart(Throwable reason) {
+    public void onPreRestart(Throwable reason) {
         System.out.println("UserGuardianActor is restarting due to: " + reason.getMessage());
     }
 
     @Override
-    public void postRestart(Throwable reason) {
+    public void onPostRestart(Throwable reason) {
         System.out.println("UserGuardianActor has restarted.");
     }
 }

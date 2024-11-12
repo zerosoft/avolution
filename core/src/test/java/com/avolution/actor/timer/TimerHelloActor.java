@@ -59,8 +59,8 @@ public class TimerHelloActor extends AbstractActor<TimerHelloActor.Message> {
     }
 
     @Override
-    public void postStop() {
+    public void onPostStop() {
         context.cancelTimer(TIMER_KEY);
-        super.postStop();
+        super.onPostStop();
     }
 }

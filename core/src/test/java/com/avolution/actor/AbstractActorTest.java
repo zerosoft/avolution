@@ -1,11 +1,8 @@
 package com.avolution.actor;
 
 
-import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.core.*;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.BeforeEach;
@@ -127,20 +124,20 @@ class AbstractActorTest {
         }
 
         @Override
-        protected void onPostStop() {
+        public void onPostStop() {
             postStopCalled.set(true);
         }
 
         @Override
-        public void preRestart(Throwable reason) {
+        public void onPreRestart(Throwable reason) {
             preRestartCalled.set(true);
-            super.preRestart(reason);
+            super.onPreRestart(reason);
         }
 
         @Override
-        public void postRestart(Throwable reason) {
+        public void onPostRestart(Throwable reason) {
             postRestartCalled.set(true);
-            super.postRestart(reason);
+            super.onPostRestart(reason);
         }
 
         int getProcessedCount() {

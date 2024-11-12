@@ -9,7 +9,7 @@ public final class Restart implements Signal {
 
     @Override
     public void handle(AbstractActor<?> actor) {
-        actor.preRestart(null);
-        actor.postRestart(null);
+        actor.onPreRestart(null);
+        actor.onPostRestart(null);
     }
 }

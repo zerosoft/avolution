@@ -51,7 +51,7 @@ public final class AskPattern {
             }
 
             @Override
-            public void postStop() {
+            public void onPostStop() {
                 timeoutTask.cancel(true);
                 if (!future.isDone()) {
                     future.completeExceptionally(

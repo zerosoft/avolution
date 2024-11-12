@@ -2,7 +2,9 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.context.ActorContextManager;
+import com.avolution.actor.context.ActorRefRegistry;
 import com.avolution.actor.dispatch.Dispatcher;
+import com.avolution.actor.exception.ActorStopException;
 import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
@@ -13,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -67,16 +70,15 @@ public class ActorSystem {
 
     private static final AtomicReference<ActorSystem> INSTANCE = new AtomicReference<>();
     private static final ConcurrentHashMap<String, ActorSystem> NAMED_SYSTEMS = new ConcurrentHashMap<>();
-
+    // 系统名称
     private final String name;
-
-    private final Map<String, ActorRef<?>> actors;
-
+    // 系统组件
+    private final ActorRefRegistry refRegistry;
     private final ActorContextManager contextManager;
-
+    // 系统服务
     private final Dispatcher dispatcher;
     private final DeathWatch deathWatch;
-
+    // 系统状态
     private final ScheduledExecutorService scheduler;
     private final AtomicReference<SystemState> state;
     private final CompletableFuture<Void> terminationFuture;
@@ -120,13 +122,13 @@ public class ActorSystem {
 
     private ActorSystem(String name) {
         this.name = name;
-        this.actors = new ConcurrentHashMap<>();
         this.dispatcher = new Dispatcher();
         this.deathWatch = new DeathWatch(this);
         this.scheduler = new VirtualThreadScheduler();
         this.state = new AtomicReference<>(SystemState.NEW);
         this.terminationFuture = new CompletableFuture<>();
-        this.contextManager = new ActorContextManager(this);
+        this.contextManager = new ActorContextManager();
+        this.refRegistry=new ActorRefRegistry(this);
         start();
     }
 
@@ -148,6 +150,14 @@ public class ActorSystem {
         return actorOf(props, name, null);
     }
 
+
+    private final Map<String,AtomicInteger> pathId = new HashMap<>();
+
+    public int generateUniqueId(String path) {
+        AtomicInteger atomicInteger = pathId.computeIfAbsent(path, k -> new AtomicInteger(0));
+        return atomicInteger.incrementAndGet();
+    }
+
     public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorContext actorContextRef) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
@@ -155,8 +165,13 @@ public class ActorSystem {
         }
 
 //        validateActorName(name);
+        String path;
+        if (actorContextRef!=null){
+            path =  name +"#"+generateUniqueId(name);
+        }else {
+             path = "/user/" + name +"#"+generateUniqueId(name);
+        }
 
-        String path = "/user/" + name + "/" + UUID.randomUUID();
 
         // 检查是否已存在
         if (contextManager.hasContext(path)) {
@@ -167,18 +182,15 @@ public class ActorSystem {
             AbstractActor<T> actor = props.newActor();
             ActorContext context = new ActorContext(path, this, actor, actorContextRef != null ? actorContextRef : null, props);
 
-            ActorRefProxy<T> actorRef = new ActorRefProxy<>(actor);
-
-            // 注册Actor
-            actors.put(path, actorRef);
-            contextManager.addContext(path, context);
+            LocalActorRef<T> actorRef = new LocalActorRef<>(actor);
 
             if (actorContextRef!=null){
                 actorContextRef.getChildren().put(name,actorRef);
             }
-
             // 初始化Actor
             actor.initialize(context);
+            // 注册Actor
+            registerActor(actorRef,context);
 
             log.debug("Created actor: {}", path);
             return actorRef;
@@ -188,8 +200,8 @@ public class ActorSystem {
         }
     }
 
-    public void stop(ActorRef actor) {
-       actor.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+    public void stop(ActorRef actorRef) {
+        actorRef.tell(PoisonPill.INSTANCE,ActorRef.noSender());
     }
 
     public CompletableFuture<Void> terminate() {
@@ -229,18 +241,7 @@ public class ActorSystem {
     }
 
     private void stopUserActors() {
-        // 获取所有用户Actor路径
-        List<String> userActorPaths = actors.keySet().stream()
-                .filter(path -> path.startsWith("/user/"))
-                .toList();
 
-        // 停止所有用户Actor
-        for (String path : userActorPaths) {
-            ActorRef<?> actor = actors.get(path);
-            if (actor != null) {
-                stop(actor);
-            }
-        }
 
         // 最后停止用户守护者
         if (userGuardian != null) {
@@ -272,11 +273,6 @@ public class ActorSystem {
             if (dispatcher != null) {
                 dispatcher.shutdown();
             }
-
-            // 清理其他资源
-            actors.clear();
-            contextManager.terminateAll();
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Interrupted while shutting down internals", e);
@@ -285,6 +281,16 @@ public class ActorSystem {
 
     public CompletableFuture<Void> getWhenTerminated() {
         return terminationFuture;
+    }
+
+    public void registerActor(ActorRef<?> ref, ActorContext context) {
+        refRegistry.register(ref,ref.path());
+        contextManager.addContext(ref.path(), context);
+    }
+
+    public void unregisterActor(String path) {
+        refRegistry.unregister(path);
+        contextManager.removeContext(path);
     }
 
     // Getters

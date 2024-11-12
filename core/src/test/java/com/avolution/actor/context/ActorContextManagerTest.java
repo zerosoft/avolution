@@ -20,7 +20,7 @@ class ActorContextManagerTest {
     @BeforeEach
     void setUp() {
         system = ActorSystem.create("test-system");
-        contextManager = new ActorContextManager(system);
+        contextManager = new ActorContextManager();
     }
 
     @Test
@@ -101,7 +101,7 @@ class ActorContextManagerTest {
         }
 
         @Override
-        protected void onPostStop() {
+        public void onPostStop() {
             postStopCalled.set(true);
         }
 

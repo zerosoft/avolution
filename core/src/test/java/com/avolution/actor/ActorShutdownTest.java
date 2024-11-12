@@ -62,7 +62,7 @@ public class ActorShutdownTest {
         }
 
         @Override
-        protected void onPostStop() {
+        public void onPostStop() {
             System.out.println(path()+"Actor stopped");
             postStopCalled.set(true);
         }

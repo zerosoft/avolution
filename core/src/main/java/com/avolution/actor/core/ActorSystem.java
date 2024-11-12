@@ -3,6 +3,7 @@ package com.avolution.actor.core;
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.context.ActorContextManager;
 import com.avolution.actor.dispatch.Dispatcher;
+import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.system.actor.*;
@@ -70,8 +71,6 @@ public class ActorSystem {
     private final String name;
 
     private final Map<String, ActorRef<?>> actors;
-
-//    private final Map<String, ActorContext> contexts;
 
     private final ActorContextManager contextManager;
 
@@ -174,6 +173,10 @@ public class ActorSystem {
             actors.put(path, actorRef);
             contextManager.addContext(path, context);
 
+            if (actorContextRef!=null){
+                actorContextRef.getChildren().put(name,actorRef);
+            }
+
             // 初始化Actor
             actor.initialize(context);
 
@@ -186,12 +189,7 @@ public class ActorSystem {
     }
 
     public void stop(ActorRef actor) {
-        String path = actor.path();
-        actors.remove(path);
-        contextManager.getContext(path).ifPresent(context -> {
-            context.stop();
-            contextManager.removeContext(path);
-        });
+       actor.tell(PoisonPill.INSTANCE,ActorRef.noSender());
     }
 
     public CompletableFuture<Void> terminate() {

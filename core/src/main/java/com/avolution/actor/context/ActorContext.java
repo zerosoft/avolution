@@ -2,10 +2,12 @@ package com.avolution.actor.context;
 
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
 import com.avolution.actor.core.*;
+import com.avolution.actor.exception.ActorStopException;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.ReceiveTimeout;
+import com.avolution.actor.message.SupervisionMessage;
 import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.lifecycle.LifecycleState;
@@ -39,11 +41,11 @@ public class ActorContext {
     }
 
     // Actor关系管理
-    private final Map<String, ActorRef> children;
+    private final Map<String, AbstractActor> children;
 
     private final Set<ActorRef<?>> watchedActors;
 
-    private final SupervisorStrategy supervisorStrategy;
+    private SupervisorStrategy supervisorStrategy;
     
     // 消息处理
     protected final Mailbox mailbox;
@@ -183,7 +185,12 @@ public class ActorContext {
     }
 
     public Map<String, ActorRef> getChildren() {
-        return children;
+        Map<String, ActorRef> result=new HashMap<>();
+        Set<String> keySets = children.keySet();
+        for (String keySet : keySets) {
+            result.put(keySet,children.get(keySet).getSelf());
+        }
+        return result;
     }
 
     public String getPath() {
@@ -230,9 +237,39 @@ public class ActorContext {
         }
     }
 
-    public void stop(ActorRef actorRef){
-        if (actorRef instanceof ActorRefProxy) {
-            ((ActorRefProxy<?>) actorRef).destroy();
+    public void stop(ActorRef actorRef) {
+        if (actorRef == null) {
+            throw new IllegalArgumentException("ActorRef cannot be null");
+        }
+
+        String actorPath = actorRef.path();
+        String actorName = actorRef.name();
+
+        try {
+            // 1. 检查是否为子Actor
+            if (!children.containsKey(actorName)) {
+                logger.warn("Attempting to stop non-child actor: {}", actorPath);
+                return;
+            }
+
+            // 2. 获取Actor实例并执行停止前的清理
+            if (actorRef instanceof AbstractActor<?> actor) {
+                // 处理未完成的消息
+                actor.shutdown();
+            }
+
+            // 4. 从父Actor的子列表中移除
+            children.remove(actorName);
+
+            // 5. 清理系统资源
+            system.stop(actorRef);
+
+            logger.debug("Successfully stopped actor: {}", actorPath);
+        } catch (Exception e) {
+            logger.error("Error while stopping actor: {}", actorPath, e);
+            // 确保即使发生错误也能移除Actor
+            children.remove(actorName);
+            throw new ActorStopException("Failed to stop actor: " + actorPath, e);
         }
     }
 
@@ -244,7 +281,6 @@ public class ActorContext {
         validateChildName(name);
         String childPath = self.get().path() + "/" + name;
         ActorRef<R> child = system.actorOf(props, childPath,this);
-        children.put(name, child);
         return child;
     }
 
@@ -286,4 +322,24 @@ public class ActorContext {
         }
     }
 
+    public void resume() {
+        if (self.get() instanceof AbstractActor actor) {
+//            actor.resume();
+        }
+    }
+
+    public void escalate(Throwable cause) {
+        if (parent != null) {
+            SupervisionMessage supervisionMessage = new SupervisionMessage(self.get(), cause);
+            Envelope envelope=new Envelope(supervisionMessage,self.get(),parent.self.get(), MessageType.NORMAL,1);
+            parent.tell(envelope);
+        } else {
+            logger.error("No parent to escalate error to, stopping self", cause);
+            stop(self.get());
+        }
+    }
+
+    public void setSupervisorStrategy(SupervisorStrategy supervisorStrategy) {
+        this.supervisorStrategy=supervisorStrategy;
+    }
 }

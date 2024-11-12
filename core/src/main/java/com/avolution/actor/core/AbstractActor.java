@@ -3,7 +3,6 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.exception.AskTimeoutException;
 import com.avolution.actor.lifecycle.LifecycleState;
 import  com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
@@ -11,6 +10,8 @@ import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.metrics.ActorMetricsCollector;
 import com.avolution.actor.pattern.AskPattern;
+import com.avolution.actor.strategy.ActorStrategy;
+import com.avolution.actor.strategy.DefaultActorStrategy;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 
@@ -21,10 +22,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -57,6 +56,13 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     private final AtomicInteger deadLetterCount = new AtomicInteger(0);
 
     private ActorMetricsCollector metricsCollector;
+
+    private ActorStrategy<T> strategy = new DefaultActorStrategy<>();
+
+    public void setStrategy(ActorStrategy<T> strategy) {
+        this.strategy = strategy;
+    }
+
 
     public AbstractActor() {
         registerHandlers();
@@ -244,6 +250,8 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         }
 
         if (isTerminated()) {
+            logger.warn("Actor is terminated, cannot process message: {}",
+                    message.getMessage().getClass().getSimpleName());
             handleDeadLetter(message);
             return;
         }
@@ -255,21 +263,21 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         boolean success = true;
 
         try {
+            // 处理消息
+            strategy.beforeMessageHandle(message, this);
             currentMessage = message;
-            if (message.getMessage() instanceof Signal signal) {
-                signal.handle(this);
-            } else {
-                onReceive(currentMessage.getMessage());
-            }
+            strategy.handleMessage(message, this);
         } catch (Exception e) {
             success = false;
-            context.handleFailure(e, message);
+            strategy.handleFailure(e, message, this);
         } finally {
             currentMessage = null;
+            strategy.afterMessageHandle(message, this, success);
             if (metricsCollector != null) {
                 metricsCollector.recordMessage(startTime, success);
             }
         }
+
     }
 
     public <R> CompletableFuture<R> ask(T message, Duration timeout) {
@@ -297,7 +305,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         if (context != null) {
             // 停止所有子Actor
             context.getChildren().values().forEach(child -> {
-                context.system().stop(child);
+                context.stop(child);
             });
             context = null;
         }
@@ -323,9 +331,6 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     public final void shutdown() {
         if (lifecycleState != LifecycleState.STOPPED) {
             try {
-                // 1. 调用预停止钩子
-                postStop();
-
                 // 2. 停止接收新消息
                 lifecycleState = LifecycleState.STOPPING;
 
@@ -347,4 +352,9 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
             }
         }
     }
+
+    public void setContext(ActorContext context) {
+        this.context=context;
+    }
+
 }

@@ -30,7 +30,9 @@ public class Props<T> {
     public static <T> Props<T> create(Class<? extends AbstractActor<T>> actorClass) {
         return new Props<>(() -> {
             try {
-                return actorClass.getDeclaredConstructor().newInstance();
+                Constructor<? extends AbstractActor<T>> declaredConstructor = actorClass.getDeclaredConstructor();
+                declaredConstructor.setAccessible(true);
+                return declaredConstructor.newInstance();
             } catch (Exception e) {
                 throw new ActorCreationException("Failed to create actor instance", e);
             }
@@ -52,6 +54,7 @@ public class Props<T> {
                     paramTypes[i] = params[i].getClass();
                 }
                 Constructor<? extends AbstractActor<T>> constructor = actorClass.getDeclaredConstructor(paramTypes);
+                constructor.setAccessible(true);
                 return constructor.newInstance(params);
             } catch (Exception e) {
                 throw new ActorCreationException("Failed to create actor instance with parameters", e);

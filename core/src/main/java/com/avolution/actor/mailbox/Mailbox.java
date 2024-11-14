@@ -22,7 +22,7 @@ public class Mailbox {
     private final AtomicInteger unprocessedMessages;
 
     private final int throughput;
-    private volatile boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public Mailbox(int throughput) {
         this.queue = new ConcurrentLinkedQueue<>();
@@ -35,14 +35,13 @@ public class Mailbox {
 
         this.unprocessedMessages = new AtomicInteger(0);
         this.throughput = throughput;
-        this.closed = false;
     }
 
     /**
      * 入队消息
      */
     public boolean enqueue(Envelope envelope) {
-        if (closed || suspended.get()) {
+        if (closed.get() || suspended.get()) {
             metrics.messageRejected();
             return false;
         }
@@ -65,6 +64,10 @@ public class Mailbox {
      * 处理队列中的消息
      */
     public void process(MessageHandler<?> handler) {
+        if (closed.get()) {
+            return;
+        }
+
         if (processing.compareAndSet(false, true)) {
             try {
                 int processed = 0;
@@ -143,7 +146,7 @@ public class Mailbox {
      * 关闭邮箱
      */
     public void close() {
-        closed = true;
+        closed.set(true);
         clear();
     }
 

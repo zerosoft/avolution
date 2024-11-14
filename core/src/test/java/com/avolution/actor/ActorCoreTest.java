@@ -7,7 +7,9 @@ import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -44,14 +46,38 @@ class ActorCoreTest {
 
         ActorRef<TestMessage> child3 = parentActor.getContext().actorOf(Props.create(TestActor.class), "child");
 
-        System.out.println(child.path());
-        System.out.println(child2.path());
-        System.out.println(child3.path());
+        System.out.println(child.name());
         assertNotNull(child);
         assertTrue(child.path().startsWith(parentRef.path()));
 
+        Set<String> children = system.getRefRegistry().getChildren(parentRef.path());
 
-        assertTrue(parentActor.getContext().getChildren().containsValue(child.name()));
+        assertTrue(children.contains(child.path()));
+
+
+        child3.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+
+        try {
+            TimeUnit.MILLISECONDS.sleep(100L);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        children = system.getRefRegistry().getChildren(parentRef.path());
+        assertFalse(children.contains(child3.path()));
+
+
+        parentRef.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+
+        try {
+            TimeUnit.MILLISECONDS.sleep(100L);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        children = system.getRefRegistry().getChildren(parentRef.path());
+        assertEquals(children.size(),0);
+
+        child3.tell(new TestMessage("test"),ActorRef.noSender());
     }
 
     @Test

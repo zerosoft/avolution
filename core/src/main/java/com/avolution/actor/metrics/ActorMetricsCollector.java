@@ -82,4 +82,14 @@ public class ActorMetricsCollector {
                 .minProcessingTime(minProcessingTime.get());
         return builder.build();
     }
+
+    public void reset() {
+        messageCount.set(0);
+        failureCount.set(0);
+        totalProcessingTime.set(0);
+        maxProcessingTime.set(0);
+        minProcessingTime.set(Long.MAX_VALUE);
+        deadLetterCount.set(0);
+        lastProcessingTime = 0;
+    }
 }

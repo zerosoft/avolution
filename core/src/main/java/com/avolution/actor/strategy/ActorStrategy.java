@@ -32,6 +32,7 @@ public interface ActorStrategy<T> {
      * 生命周期事件
      */
     default void onPreStart(AbstractActor<T> self) {}
+    default void onPreStop(AbstractActor<T> self) {}
     default void onPostStop(AbstractActor<T> self) {}
     default void onPreRestart(Throwable reason, AbstractActor<T> self) {}
     default void onPostRestart(Throwable reason, AbstractActor<T> self) {}

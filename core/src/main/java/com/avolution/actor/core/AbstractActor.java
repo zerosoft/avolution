@@ -1,10 +1,12 @@
 package com.avolution.actor.core;
 
 
-import com.avolution.actor.context.ActorContext;
 import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.lifecycle.LifecycleState;
-import  com.avolution.actor.message.Envelope;
+import com.avolution.actor.mailbox.Mailbox;
+import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageHandler;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
@@ -23,7 +25,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -31,18 +35,19 @@ import java.util.function.Consumer;
  * Actor抽象基类，提供基础实现
  * @param <T> Actor可处理的消息类型
  */
-public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T> {
+public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorRef<T>, MessageHandler<T> {
     Logger logger=org.slf4j.LoggerFactory.getLogger(AbstractActor.class);
+
+    private static final int MAX_DEAD_LETTERS = 1000;
     /**
      * Actor上下文
      */
     protected ActorContext context;
-
-    private volatile Envelope<T> currentMessage;
     /**
-     * Actor生命周期状态
+     * 当前处理的消息
      */
-    protected LifecycleState lifecycleState = LifecycleState.NEW;
+    private volatile Envelope<T> currentMessage;
+
     // 持有唯一的ActorRefProxy引用
     private LocalActorRef<T> selfRef;
     /**
@@ -52,26 +57,24 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     // 死信相关字段
     private final ConcurrentLinkedQueue<IDeadLetterActorMessage.DeadLetter> deadLetters = new ConcurrentLinkedQueue<>();
-    private static final int MAX_DEAD_LETTERS = 1000;
+    /**
+     * 死信计数
+     */
     private final AtomicInteger deadLetterCount = new AtomicInteger(0);
-
+    /**
+     * 消息度量收集器
+     */
     private ActorMetricsCollector metricsCollector;
-
+    /**
+     * Actor策略
+     */
     private ActorStrategy<T> strategy = new DefaultActorStrategy<>();
+    /**
+     * 当前消息处理线程
+     */
+    private volatile Thread currentProcessingThread;
 
-    public void setStrategy(ActorStrategy<T> strategy) {
-        this.strategy = strategy;
-    }
-
-    public AbstractActor() {
-        registerHandlers();
-    }
-
-    public void initialize(ActorContext context) {
-        this.context = context;
-        this.lifecycleState = LifecycleState.STARTED;
-        this.metricsCollector = new ActorMetricsCollector(path());
-    }
+    private volatile StopReason stopReason;
 
     private void registerHandlers() {
         for (Method method : this.getClass().getDeclaredMethods()) {
@@ -88,11 +91,58 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     private void invokeHandler(Method method, Object message) {
         try {
             method.invoke(this, message);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            logger.error("Error invoking message handler for {}: {}", message.getClass().getSimpleName(), cause.getMessage());
+            strategy.handleFailure(cause, currentMessage, this);
+        } catch (Exception e) {
+            logger.error("Error invoking message handler", e);
+            strategy.handleFailure(e, currentMessage, this);
         }
     }
 
+
+    public void initialize() {
+        try {
+            // 1. 注册消息处理器
+            registerHandlers();
+
+            // 2. 验证Actor配置
+            validateConfiguration();
+
+            // 3. 初始化策略
+            initializeStrategy();
+
+            // 4. 启动度量收集
+            startMetricsCollection();
+
+            logger.debug("Actor initialized: {}", context.getPath());
+        } catch (Exception e) {
+            logger.error("Failed to initialize actor: {}", context.getPath(), e);
+            throw new ActorInitializationException("Actor initialization failed", e);
+        }
+    }
+
+    private void validateConfiguration() {
+        if (context == null) {
+            throw new ActorInitializationException("Actor context not set");
+        }
+        if (selfRef == null) {
+            throw new ActorInitializationException("Actor reference not set");
+        }
+    }
+
+    private void initializeStrategy() {
+        if (strategy == null) {
+            strategy = new DefaultActorStrategy<>();
+        }
+    }
+
+    private void startMetricsCollection() {
+        if (metricsCollector == null) {
+            metricsCollector = new ActorMetricsCollector(path());
+        }
+    }
     /**
      * 处理接收到的消息
      *
@@ -148,7 +198,6 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
 
-
     /**
      * 获取消息发送者
      * @return
@@ -158,10 +207,11 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
     }
 
 
-    protected void setSelfRef(LocalActorRef<T> ref) {
-        if (this.selfRef == null) {
-            this.selfRef = ref;
+    public void setSelfRef(LocalActorRef<T> ref) {
+        if (this.selfRef != null) {
+            throw new IllegalStateException("Self reference already set");
         }
+        this.selfRef = ref;
     }
 
     public ActorRef<T> getSelf() {
@@ -207,47 +257,8 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
 
     @Override
     public boolean isTerminated() {
-        return lifecycleState == LifecycleState.STOPPED;
+        return isShuttingDown()|| getLifecycleState() != LifecycleState.RUNNING;
     }
-
-    // 生命周期回调方法
-     private void actorStop() {
-        try {
-            // 执行子类的清理逻辑
-            onPostStop();
-        } finally {
-            // 确保资源被清理
-            destroy();
-        }
-    }
-
-    // Actor正式初始换之前的
-    public void preStart() {
-        if (strategy!=null){
-            strategy.onPreStart(this);
-        }
-    }
-
-
-    public void onPostStop() {
-        if (strategy!=null){
-            strategy.onPostStop(this);
-        }
-    }
-
-    public void onPreRestart(Throwable reason) {
-        if (strategy!=null){
-            strategy.onPreRestart(reason,this);
-        }
-    }
-
-    public void onPostRestart(Throwable reason) {
-        // 在重启之后的处理逻辑
-        if (strategy!=null){
-            strategy.onPostRestart(reason,this);
-        }
-    }
-
 
 
     @Override
@@ -271,6 +282,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         long startTime = System.nanoTime();
         boolean success = true;
 
+        currentProcessingThread = Thread.currentThread();
         try {
             // 处理消息
             strategy.beforeMessageHandle(message, this);
@@ -285,6 +297,7 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
             if (metricsCollector != null) {
                 metricsCollector.recordMessage(startTime, success);
             }
+            currentProcessingThread=null;
         }
 
     }
@@ -301,67 +314,173 @@ public abstract class AbstractActor<T> implements ActorRef<T>, MessageHandler<T>
         return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
     }
 
-    /**
-     * 销毁Actor的资源
-     */
-    protected void destroy() {
-        // 1. 取消所有待处理的消息
-        if (currentMessage != null) {
-            currentMessage = null;
-        }
 
-        // 2. 清理上下文引用
-        if (context != null) {
-            // 停止所有子Actor
-            context.stop();
-            context = null;
-        }
-
-        // 3. 更新生命周期状态
-        lifecycleState = LifecycleState.STOPPED;
-
-        // 清理死信队列
-        deadLetters.clear();
-        deadLetterCount.set(0);
-
-        // 如果有未处理的当前消息，将其作为死信处理
-        if (currentMessage != null) {
-            handleDeadLetter(currentMessage);
-            currentMessage = null;
-        }
+    @Override
+    protected void doStart() {
+        onPreStart();
+        initialize();
+        onPostStart();
     }
 
+    @Override
+    protected CompletableFuture<Void> doStop() {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        try {
+            // 在当前线程等待消息处理完成
+            waitForMessageProcessing().get(1, TimeUnit.SECONDS);
+
+            // 执行停止回调
+            onPreStop();
+
+            // 记录停止原因
+            if (stopReason == null) {
+                stopReason = StopReason.SELF_STOP;
+            }
+
+            // 清理资源
+            doCleanup();
+
+            // 执行停止后回调
+            onPostStop();
+
+            future.complete(null);
+        } catch (Exception e) {
+            logger.error("Error during stop", e);
+            stopReason = StopReason.ERROR_STOP;
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
 
     /**
-     * 优雅关闭Actor
+     * 由父Actor或系统调用的停止方法
      */
-    public final void shutdown() {
-        if (lifecycleState != LifecycleState.STOPPED) {
-            try {
-                // 2. 停止接收新消息
-                lifecycleState = LifecycleState.STOPPING;
+    public CompletableFuture<Void> stopByParent() {
+        stopReason = StopReason.PARENT_STOP;
+        return stop();
+    }
 
-                // 3. 等待当前消息处理完成
-                if (currentMessage != null) {
-                    // 可以添加超时逻辑
-                    while (currentMessage != null) {
-                        Thread.yield();
-                    }
-                }
-                // 4. 销毁资源
-                actorStop();
+    /**
+     * 由系统调用的停止方法
+     */
+    public CompletableFuture<Void> stopBySystem() {
+        stopReason = StopReason.SYSTEM_STOP;
+        return stop();
+    }
 
-            } catch (Exception e) {
-                logger.error("Error during actor shutdown: {}", e.getMessage(), e);
-            } finally {
-                // 5. 确保状态更新
-                lifecycleState = LifecycleState.STOPPED;
-            }
+    /**
+     * 由监督策略调用的停止方法
+     */
+    public CompletableFuture<Void> stopBySupervision() {
+        stopReason = StopReason.SUPERVISION_STOP;
+        return stop();
+    }
+
+    /**
+     * 获取停止原因
+     */
+    public StopReason getStopReason() {
+        return stopReason;
+    }
+
+    /**
+     * 判断是否由父Actor停止
+     */
+    public boolean isStoppedByParent() {
+        return StopReason.PARENT_STOP.equals(stopReason);
+    }
+
+    @Override
+    protected void doRestart(Throwable reason) {
+        onPreRestart(reason);
+        stop().join();
+        start();
+        onPostRestart(reason);
+    }
+
+    @Override
+    public CompletableFuture<Void> waitForMessageProcessing() {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        try {
+            // 1. 立即中断当前处理线程
+            interruptCurrentProcessing();
+            // 2. 完成future
+            future.complete(null);
+        } catch (Exception e) {
+            logger.error("Error during force message processing termination: {}", context.getPath(), e);
+            future.completeExceptionally(e);
         }
+        return future;
+    }
+
+    @Override
+    protected void interruptCurrentProcessing() {
+        Thread processingThread = currentProcessingThread;
+        if (processingThread != null) {
+            processingThread.interrupt();
+            currentProcessingThread = null;
+        }
+        currentMessage = null;
+    }
+
+    @Override
+    protected void doCleanup() {
+
     }
 
     public void setContext(ActorContext context) {
-        this.context=context;
+        if (this.context != null) {
+            throw new IllegalStateException("Context already set");
+        }
+        this.context = context;
     }
 
+    public void setStrategy(ActorStrategy<T> strategy) {
+        this.strategy = strategy;
+    }
+
+
+    // 默认生命周期回调实现
+    @Override
+    protected void onPreStart() {
+        if (strategy != null) {
+            strategy.onPreStart(this);
+        }
+    }
+
+    @Override
+    protected void onPostStart() {
+
+    }
+
+    // 生命周期回调函数
+   public  void preStart() {
+        if (strategy != null) {
+            strategy.onPreStart(this);
+        }
+    }
+
+    protected void onPreStop() {
+        if (strategy != null) {
+            strategy.onPreStop(this);
+        }
+    }
+
+    protected void onPostStop() {
+        if (strategy != null) {
+            strategy.onPostStop(this);
+        }
+    }
+
+    public void onPreRestart(Throwable reason) {
+        if (strategy != null) {
+            strategy.onPreRestart(reason, this);
+        }
+    }
+
+    public void onPostRestart(Throwable reason) {
+        if (strategy != null) {
+            strategy.onPostRestart(reason, this);
+        }
+    }
 }

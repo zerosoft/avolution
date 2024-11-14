@@ -1,13 +1,17 @@
 package com.avolution.actor.core;
 
 import com.avolution.actor.concurrent.VirtualThreadScheduler;
-import com.avolution.actor.context.ActorContextManager;
-import com.avolution.actor.context.ActorRefRegistry;
+import com.avolution.actor.core.context.ActorContextManager;
+import com.avolution.actor.core.context.ActorRefRegistry;
 import com.avolution.actor.dispatch.Dispatcher;
+import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.exception.ActorStopException;
+import com.avolution.actor.exception.ActorSystemCreationException;
+import com.avolution.actor.lifecycle.LifecycleState;
 import com.avolution.actor.message.PoisonPill;
+import com.avolution.actor.message.SystemStopMessage;
 import com.avolution.actor.supervision.DeathWatch;
-import com.avolution.actor.context.ActorContext;
+import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.system.actor.*;
 import com.avolution.actor.exception.ActorCreationException;
 import org.slf4j.Logger;
@@ -132,18 +136,131 @@ public class ActorSystem {
         start();
     }
 
-    private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass, String path) {
-        return actorOf(Props.create(actorClass), path);
-    }
-
     private void start() {
         if (state.compareAndSet(SystemState.NEW, SystemState.RUNNING)) {
             log.info("Actor system '{}' started", name);
         }
         // 创建系统Actor
-        this.deadLetters = createSystemActor(DeadLetterActor.class, "/system/deadLetters");
-        this.systemGuardian = createSystemActor(SystemGuardianActor.class, "/system/guardian");
-        this.userGuardian = createSystemActor(UserGuardianActor.class, "/user");
+        try {
+            initializeSystemActors();
+        } catch (ActorSystemCreationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    private void initializeSystemActors() throws ActorSystemCreationException {
+        try {
+            // 1. 创建死信Actor - 最基础的系统服务
+            this.deadLetters = createAndVerifySystemActor(
+                    DeadLetterActor.class,
+                    "/system/deadLetters",
+                    "DeadLetter Actor"
+            );
+
+            // 2. 创建系统守护Actor - 管理系统级Actor
+            this.systemGuardian = createAndVerifySystemActor(
+                    SystemGuardianActor.class,
+                    "/system/guardian",
+                    "System Guardian"
+            );
+
+            // 3. 创建用户守护Actor - 管理用户级Actor
+            this.userGuardian = createAndVerifySystemActor(
+                    UserGuardianActor.class,
+                    "/system/user",
+                    "User Guardian"
+            );
+
+            log.info("System actors initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize system actors", e);
+            throw new ActorSystemCreationException("System actors initialization failed", e);
+        }
+    }
+
+    private <T> ActorRef<T> createAndVerifySystemActor(
+            Class<? extends AbstractActor<T>> actorClass,
+            String path,
+            String actorName) throws ActorSystemCreationException {
+
+        ActorRef<T> ref = createSystemActor(actorClass, path);
+        if (ref == null) {
+            throw new ActorSystemCreationException(
+                    String.format("Failed to create %s at path: %s", actorName, path)
+            );
+        }
+
+        // 等待Actor完全初始化
+        try {
+            waitForActorInitialization(ref);
+        } catch (Exception e) {
+            throw new ActorSystemCreationException(
+                    String.format("Failed to initialize %s", actorName), e
+            );
+        }
+
+        return ref;
+    }
+
+    private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass,String path) throws ActorSystemCreationException {
+        try {
+            Props<T> props = Props.create(actorClass);
+            AbstractActor<T> actor = props.newActor();
+            ActorContext context = new ActorContext(path, this, actor, null, props);
+            String[] split = path.split("/");
+            LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path, split[split.length-1],null);
+            // 设置上下文
+            actor.setContext(context);
+            // 设置自身引用
+            actor.setSelfRef(actorRef);
+            // 初始化Actor
+            context.initializeActor();
+
+            // 注册系统Actor
+            registerSystemActor(actorRef, context);
+
+            log.debug("Created system actor: {}", path);
+            return actorRef;
+        } catch (Exception e) {
+            log.error("Failed to create system actor at path: {}", path, e);
+            throw new ActorSystemCreationException("Failed to create system actor", e);
+        }
+    }
+
+
+    private String generateActorPath(String name, ActorContext parentContext) {
+        String basePath = (parentContext != null) ?
+                parentContext.getPath() : "/user";
+        return basePath + "/" + name + "#" + generateUniqueId(name);
+    }
+
+    private void registerSystemActor(ActorRef<?> ref, ActorContext context) {
+//        refRegistry.registerSystem(ref);
+        contextManager.addContext(ref.path(), context);
+    }
+
+    private void registerUserActor(ActorRef<?> ref, ActorContext context) {
+//        refRegistry.registerUser(ref, context.getParent() == null ? "/user" : context.getParent().getPath());
+        contextManager.addContext(ref.path(), context);
+    }
+
+
+    private void waitForActorInitialization(ActorRef<?> ref) {
+        // 等待Actor进入RUNNING状态
+        long deadline = System.currentTimeMillis() + 5000; // 5秒超时
+        while (System.currentTimeMillis() < deadline) {
+            if (contextManager.getContext(ref.path()).get().getState().get() == LifecycleState.RUNNING) {
+                return;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ActorInitializationException("Actor initialization interrupted");
+            }
+        }
+        throw new ActorInitializationException("Actor initialization timeout");
     }
 
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {
@@ -158,20 +275,20 @@ public class ActorSystem {
         return atomicInteger.incrementAndGet();
     }
 
-    public <T> ActorRef<T> actorOf(Props<T> props, String name,ActorContext actorContextRef) {
+    public <T> ActorRef<T> actorOf(Props<T> props, String name, ActorContext actorContextRef) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
         }
 
-//        validateActorName(name);
-        String path;
-        if (actorContextRef!=null){
-            path =  name +"#"+generateUniqueId(name);
-        }else {
-             path = "/user/" + name +"#"+generateUniqueId(name);
-        }
+        validateActorName(name);
 
+        String path;
+        if (actorContextRef != null) {
+            path = actorContextRef.getPath() + "/" + name;
+        } else {
+            path = "/user/" + name;
+        }
 
         // 检查是否已存在
         if (contextManager.hasContext(path)) {
@@ -180,17 +297,18 @@ public class ActorSystem {
 
         try {
             AbstractActor<T> actor = props.newActor();
-            ActorContext context = new ActorContext(path, this, actor, actorContextRef != null ? actorContextRef : null, props);
+            ActorContext context = new ActorContext(path, this, actor, actorContextRef, props);
 
-            LocalActorRef<T> actorRef = new LocalActorRef<>(actor);
+            LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path,name,deadLetters);
+            actor.setContext(context);
+            actor.setSelfRef(actorRef);
 
+            context.start();
             if (actorContextRef!=null){
-                actorContextRef.getChildren().put(name,actorRef);
+                actorContextRef.addChild(name,actor);
             }
-            // 初始化Actor
-            actor.initialize(context);
             // 注册Actor
-            registerActor(actorRef,context);
+            registerActor(actorRef, context);
 
             log.debug("Created actor: {}", path);
             return actorRef;
@@ -200,8 +318,50 @@ public class ActorSystem {
         }
     }
 
-    public void stop(ActorRef actorRef) {
-        actorRef.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+    private void validateActorName(String name) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Actor name cannot be null or empty");
+        }
+
+        // 检查名称长度
+        if (name.length() > 256) {
+            throw new IllegalArgumentException("Actor name is too long (max 256 characters)");
+        }
+
+        // 检查名称格式
+        if (!name.matches("^[a-zA-Z0-9_\\-]+$")) {
+            throw new IllegalArgumentException(
+                    "Actor name can only contain alphanumeric characters, underscores and hyphens"
+            );
+        }
+
+        // 检查保留字
+        String[] reservedNames = {"system", "user", "temp", "deadLetters", "guardian"};
+        for (String reserved : reservedNames) {
+            if (name.equalsIgnoreCase(reserved)) {
+                throw new IllegalArgumentException("Actor name '" + name + "' is reserved");
+            }
+        }
+
+        // 检查特殊字符
+        if (name.contains("/") || name.contains("#")) {
+            throw new IllegalArgumentException(
+                    "Actor name cannot contain path separators (/) or hash (#) characters"
+            );
+        }
+    }
+
+    public CompletableFuture<Void> stop(ActorRef<?> actor) {
+        if (actor == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+
+        // 使用Actor的消息处理线程
+        actor.tell(new SystemStopMessage(stopFuture), ActorRef.noSender());
+
+        return stopFuture;
     }
 
     public CompletableFuture<Void> terminate() {
@@ -241,8 +401,6 @@ public class ActorSystem {
     }
 
     private void stopUserActors() {
-
-
         // 最后停止用户守护者
         if (userGuardian != null) {
             stop(userGuardian);
@@ -284,12 +442,12 @@ public class ActorSystem {
     }
 
     public void registerActor(ActorRef<?> ref, ActorContext context) {
-        refRegistry.register(ref,ref.path());
+        refRegistry.register(ref,context.getParent()==null?"/usr":context.getParent().getPath());
         contextManager.addContext(ref.path(), context);
     }
 
     public void unregisterActor(String path) {
-        refRegistry.unregister(path);
+        refRegistry.unregister(path,"");
         contextManager.removeContext(path);
     }
 
@@ -312,5 +470,13 @@ public class ActorSystem {
 
     public ActorRef<IDeadLetterActorMessage> getDeadLetters() {
         return deadLetters;
+    }
+
+    public ActorContextManager getContextManager() {
+        return contextManager;
+    }
+
+    public ActorRefRegistry getRefRegistry() {
+        return refRegistry;
     }
 }

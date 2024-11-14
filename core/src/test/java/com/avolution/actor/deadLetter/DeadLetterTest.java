@@ -39,7 +39,7 @@ public class DeadLetterTest {
 
         @Override
         public void preStart() {
-            context.watch(context.system().getDeadLetters());
+//            context.watch(context.system().getDeadLetters());
         }
 
         @OnReceive(Object.class)

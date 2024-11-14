@@ -26,15 +26,17 @@ public class LocalActorRef<T> implements ActorRef<T> {
     // 死信Actor
     private ActorRef<IDeadLetterActorMessage> deadLetters;
 
-    public LocalActorRef(AbstractActor<T> actor) {
+    public LocalActorRef(AbstractActor<T> actor,String originalPath,String originalName,ActorRef<IDeadLetterActorMessage> deadLetters) {
         this.actor = new WeakReference<>(actor);
-        this.originalPath = actor.path();
-        this.originalName = actor.name();
-        actor.setSelfRef(this);
-        deadLetters = actor.getContext().system().getDeadLetters();
+        this.originalPath =originalPath;
+        this.originalName = originalName;
+        this.deadLetters =deadLetters;
     }
 
     private void handleDeadLetter(Object message, ActorRef sender) {
+        if (deadLetters == null) {
+            return;
+        }
         IDeadLetterActorMessage.DeadLetter deadLetter = new IDeadLetterActorMessage.DeadLetter(
                 message,
                 sender.path(),

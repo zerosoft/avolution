@@ -17,7 +17,7 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
         System.out.println("World, Actor! " + message);
         getSender().tell("OK",getSelf());
 
-        getContext().schedule(()->{
+        getContext().getScheduler().schedule(()->{
             System.out.println("Hello, Actor! timer  " + message);
         },1000, TimeUnit.MILLISECONDS);
     }
@@ -26,7 +26,7 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
     public void handleWorldMessage(HelloActorMessage.Timer message) {
         System.out.println("World, Actor! " + message);
 
-        getContext().schedule(()->{
+        getContext().getScheduler().schedule(()->{
             System.out.println("Hello, Actor! timer  " + message);
         },1000, TimeUnit.MILLISECONDS);
     }

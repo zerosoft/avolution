@@ -111,3 +111,93 @@ Visualization monitoring support
     }
 
    ```
+
+## Project Directory Structure
+
+The project directory structure is organized as follows:
+
+```
+/core
+  /src
+    /main
+      /java
+        /com
+          /avolution
+            /actor
+              /concurrent
+              /config
+              /core
+              /dispatch
+              /dispatchers
+              /exception
+              /lifecycle
+              /mailbox
+              /message
+              /metrics
+              /pattern
+              /router
+              /routing
+              /strategy
+              /supervision
+              /system
+              /util
+            /net
+              /tcp
+              /udp
+            /service
+    /test
+      /java
+        /com
+          /avolution
+            /actor
+            /net
+              /tcp
+              /udp
+            /service
+  /resources
+  /test
+    /resources
+```
+
+- `core/src/main/java/com/avolution/actor`: Contains the core actor framework classes.
+- `core/src/main/java/com/avolution/net`: Contains network-related classes for TCP and UDP communication.
+- `core/src/main/java/com/avolution/service`: Contains service management classes.
+- `core/src/test/java/com/avolution`: Contains test classes for the actor framework and network communication.
+- `core/src/main/resources`: Contains resource files for the project.
+- `core/src/test/resources`: Contains test resource files.
+
+## Project Architecture
+
+The project's architecture is designed to provide a high-performance, scalable actor model framework. The key components and their roles are as follows:
+
+- `AbstractActor`: The base class for all actors, providing core actor functionality.
+- `ActorSystem`: The main class for creating and managing actors and their lifecycle.
+- `ActorContext`: Provides context for actors, including their state and message handling.
+- `Props`: A configuration class for creating actors with specific settings.
+- `Mailbox`: A high-performance message queue for actors.
+- `Dispatcher`: Responsible for dispatching messages to actors.
+- `SupervisorStrategy`: Defines strategies for handling actor failures.
+- `DeadLetterActor`: Handles messages that cannot be delivered to their intended recipients.
+- `VirtualThreadScheduler`: A scheduler for managing actor execution using virtual threads.
+
+## Contributing
+
+We welcome contributions to the Avolution project! To contribute, please follow these guidelines:
+
+1. Fork the repository and create a new branch for your feature or bugfix.
+2. Write tests for your changes and ensure all existing tests pass.
+3. Submit a pull request with a clear description of your changes.
+
+### Reporting Issues
+
+If you encounter any issues or have questions, please open an issue on the GitHub repository. Provide as much detail as possible to help us understand and resolve the issue.
+
+### Submitting Pull Requests
+
+When submitting a pull request, please ensure the following:
+
+- Your code follows the project's coding standards and conventions.
+- You have written tests for your changes.
+- You have updated any relevant documentation.
+
+Thank you for contributing to Avolution!

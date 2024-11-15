@@ -109,3 +109,93 @@ All-for-One 策略
     }
 
    ```
+
+## 项目目录结构
+
+项目目录结构如下：
+
+```
+/core
+  /src
+    /main
+      /java
+        /com
+          /avolution
+            /actor
+              /concurrent
+              /config
+              /core
+              /dispatch
+              /dispatchers
+              /exception
+              /lifecycle
+              /mailbox
+              /message
+              /metrics
+              /pattern
+              /router
+              /routing
+              /strategy
+              /supervision
+              /system
+              /util
+            /net
+              /tcp
+              /udp
+            /service
+    /test
+      /java
+        /com
+          /avolution
+            /actor
+            /net
+              /tcp
+              /udp
+            /service
+  /resources
+  /test
+    /resources
+```
+
+- `core/src/main/java/com/avolution/actor`: 包含核心 actor 框架类。
+- `core/src/main/java/com/avolution/net`: 包含用于 TCP 和 UDP 通信的网络相关类。
+- `core/src/main/java/com/avolution/service`: 包含服务管理类。
+- `core/src/test/java/com/avolution`: 包含 actor 框架和网络通信的测试类。
+- `core/src/main/resources`: 包含项目的资源文件。
+- `core/src/test/resources`: 包含测试资源文件。
+
+## 项目架构
+
+项目的架构旨在提供一个高性能、可扩展的 actor 模型框架。关键组件及其角色如下：
+
+- `AbstractActor`: 所有 actor 的基类，提供核心 actor 功能。
+- `ActorSystem`: 创建和管理 actor 及其生命周期的主要类。
+- `ActorContext`: 提供 actor 的上下文，包括其状态和消息处理。
+- `Props`: 用于创建具有特定设置的 actor 的配置类。
+- `Mailbox`: actor 的高性能消息队列。
+- `Dispatcher`: 负责将消息分发给 actor。
+- `SupervisorStrategy`: 定义处理 actor 故障的策略。
+- `DeadLetterActor`: 处理无法传递给预期接收者的消息。
+- `VirtualThreadScheduler`: 使用虚拟线程管理 actor 执行的调度器。
+
+## 贡献
+
+我们欢迎对 Avolution 项目的贡献！要贡献，请遵循以下指南：
+
+1. Fork 仓库并为您的功能或 bug 修复创建一个新分支。
+2. 为您的更改编写测试并确保所有现有测试通过。
+3. 提交一个包含更改清晰描述的 pull request。
+
+### 报告问题
+
+如果您遇到任何问题或有疑问，请在 GitHub 仓库上打开一个 issue。请尽可能提供详细信息，以帮助我们理解和解决问题。
+
+### 提交 Pull Request
+
+提交 pull request 时，请确保以下内容：
+
+- 您的代码遵循项目的编码标准和约定。
+- 您已为更改编写了测试。
+- 您已更新任何相关文档。
+
+感谢您为 Avolution 做出的贡献！

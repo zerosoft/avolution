@@ -4,38 +4,49 @@ import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.Map;
 
 import com.avolution.actor.core.ActorRef;
 
-/**
- * 消息封装类
- */
 public class Envelope<T> {
-    // 消息ID
+
+    public enum Priority {
+        HIGH(0),
+        NORMAL(1),
+        LOW(2);
+
+        private final int value;
+
+        Priority(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return value;
+        }
+    }
+
     private final String messageId;
-    // 消息内容
     private final T message;
-    // 发送者
     private final ActorRef<?> sender;
-    // 接收者
     private final ActorRef<T> recipient;
-    // 时间戳
     private final Instant timestamp;
-
     private final MessageType messageType;
-
     private final int retryCount;
+    private final Map<String, Object> metadata;
 
     private final Set<String> processedActors;
+    private final Priority priority;
 
-    // 直接使用构造方法替代Builder
-    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient, MessageType messageType, int retryCount) {
-        if (message == null) {
-            throw new IllegalArgumentException("Message cannot be null");
-        }
-        if (recipient == null) {
-            throw new IllegalArgumentException("Recipient cannot be null");
-        }
+    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient,
+                    MessageType messageType, int retryCount) {
+        this(message, sender, recipient, messageType, retryCount, Priority.NORMAL);
+    }
+
+    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient,
+                    MessageType messageType, int retryCount, Priority priority) {
+        validateInputs(message, recipient);
         this.messageId = UUID.randomUUID().toString();
         this.message = message;
         this.sender = sender;
@@ -43,11 +54,22 @@ public class Envelope<T> {
         this.timestamp = Instant.now();
         this.messageType = messageType != null ? messageType : MessageType.NORMAL;
         this.retryCount = retryCount;
+        this.metadata = new ConcurrentHashMap<>();
         this.processedActors = ConcurrentHashMap.newKeySet();
+        this.priority = priority;
     }
 
-    // Getters
-    public String messageId() {
+    private void validateInputs(T message, ActorRef<T> recipient) {
+        if (message == null) {
+            throw new IllegalArgumentException("Message cannot be null");
+        }
+        if (recipient == null) {
+            throw new IllegalArgumentException("Recipient cannot be null");
+        }
+    }
+
+    // 基本的 getter 方法
+    public String getMessageId() {
         return messageId;
     }
 
@@ -75,15 +97,32 @@ public class Envelope<T> {
         return retryCount;
     }
 
-    // 创建一个新Envelope，重试计数增加1
-    public Envelope<T> withRetry() {
-        return new Envelope<>(message, sender, recipient, messageType, retryCount + 1);
+    public Map<String, Object> getMetadata() {
+        return metadata;
     }
 
-    public boolean isSystemMessage() {
-        return messageType == MessageType.SYSTEM;
+    public Set<String> getProcessedActors() {
+        return processedActors;
     }
 
+    public Priority getPriority() {
+        return priority;
+    }
+
+    // 元数据操作
+    public void addMetadata(String key, Object value) {
+        metadata.put(key, value);
+    }
+
+    public Object getMetadata(String key) {
+        return metadata.get(key);
+    }
+
+    public Map<String, Object> metadata() {
+        return Collections.unmodifiableMap(metadata);
+    }
+
+    // 处理记录
     public void markProcessed(String actorPath) {
         processedActors.add(actorPath);
     }
@@ -92,5 +131,31 @@ public class Envelope<T> {
         return processedActors.contains(actorPath);
     }
 
+    public Set<String> processedActors() {
+        return Collections.unmodifiableSet(processedActors);
+    }
 
+    // 创建新的 Envelope
+    public Envelope<T> withRetry() {
+        return new Envelope<>(message, sender, recipient, messageType, retryCount + 1, priority);
+    }
+
+    public Envelope<T> withPriority(Priority newPriority) {
+        return new Envelope<>(message, sender, recipient, messageType, retryCount, newPriority);
+    }
+
+    public boolean isSystemMessage() {
+        return messageType == MessageType.SYSTEM;
+    }
+
+    public boolean isDeadLetter() {
+        return retryCount >= 3;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Envelope[id=%s, message=%s, type=%s, retry=%d, priority=%s]",
+                messageId, message.getClass().getSimpleName(), messageType, retryCount, priority);
+    }
 }
+

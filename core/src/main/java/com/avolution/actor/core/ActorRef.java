@@ -2,6 +2,7 @@ package com.avolution.actor.core;
 
 
 import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.system.NoSender;
 
 import java.time.Duration;
@@ -25,7 +26,7 @@ public interface ActorRef<T> {
      * @param signal 信号
      * @param sender 发送者
      */
-    void tell(Signal signal, ActorRef sender);
+    void tell(SignalEnvelope signal, ActorRef sender);
 
 
     /**

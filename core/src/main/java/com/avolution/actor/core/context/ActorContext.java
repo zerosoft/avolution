@@ -5,10 +5,8 @@ import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.exception.ActorStopException;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.*;
-import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.lifecycle.LifecycleState;
-import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,33 +90,6 @@ public class ActorContext  {
         }
     }
 
-    // 添加消息处理失败的处理逻辑
-    public void handleFailure(Exception error, Envelope envelope) {
-        Directive directive = supervisorStrategy.handle(error);
-        switch (directive) {
-            case RESUME:
-                logger.warn("Actor resumed after error", error);
-                break;
-            case RESTART:
-                logger.warn("Actor restarting after error", error);
-                restart(error);
-                break;
-            case STOP:
-                logger.warn("Actor stopping after error", error);
-                stop();
-                break;
-            case ESCALATE:
-                if (parent != null) {
-                    parent.handleFailure(error, envelope);
-                } else {
-                    logger.error("Error escalated to root actor, stopping actor system", error);
-                    system.terminate();
-                }
-                break;
-        }
-    }
-
-
     public ActorSystem system() {
         return system;
     }
@@ -132,6 +103,10 @@ public class ActorContext  {
         }
     }
 
+    /**
+     * 获取子Actor的映射
+     * @return
+     */
     public Map<String, ActorRef> getChildren() {
         Map<String, ActorRef> result=new HashMap<>();
         Set<String> keySets = children.keySet();
@@ -149,9 +124,12 @@ public class ActorContext  {
         return path;
     }
 
+    private void setState(LifecycleState lifecycleState) {
+        this.state.set(lifecycleState);
+    }
 
     /**
-     * 生命周期
+     * 创建启动Actor
      */
     public void start() {
         if (state.compareAndSet(LifecycleState.NEW, LifecycleState.STARTING)) {
@@ -165,7 +143,10 @@ public class ActorContext  {
         }
     }
 
-
+    /**
+     * 关闭Actor
+     * @return 返回停止的Future
+     */
     public CompletableFuture<Void> stop() {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
@@ -186,7 +167,6 @@ public class ActorContext  {
             mailbox.suspend();
             state.set(LifecycleState.STOPPING);
 
-            // 2. 停止子Actor
             // 2. 停止子Actor
             if (!children.isEmpty()) {
                 // 创建子Actor停止的Future列表
@@ -284,9 +264,7 @@ public class ActorContext  {
         }
     }
 
-    private void setState(LifecycleState lifecycleState) {
-        this.state.set(lifecycleState);
-    }
+
 
     /**
      * 并行强制停止所有子Actor
@@ -427,13 +405,34 @@ public class ActorContext  {
                 return;
             }
 
-            // 处理未完成的消息
-            actorRef.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+            AbstractActor child = children.get(actorName);
+
+            // 1. 暂停子Actor的邮箱
+            child.getContext().suspend();
+
+            // 2. 发送停止消息
+            CompletableFuture<Void> stopFuture = child.stop();
+
+            // 3. 等待停止完成或超时
+            try {
+                stopFuture.get(5, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                logger.warn("Timeout waiting for actor to stop: {}, forcing stop", actorPath);
+                child.forceStop();
+            }
+
+            // 4. 清理资源
+            children.remove(actorName);
+            child.setContext(null);
+
+            // 5. 通知监视者
+            notifyWatchers(actorRef);
 
             logger.debug("Successfully stopped actor: {}", actorPath);
         } catch (Exception e) {
             logger.error("Error while stopping actor: {}", actorPath, e);
             // 确保即使发生错误也能移除Actor
+            children.remove(actorName);
             throw new ActorStopException("Failed to stop actor: " + actorPath, e);
         }
     }
@@ -500,4 +499,6 @@ public class ActorContext  {
     public Mailbox getMailbox() {
         return mailbox;
     }
+
+
 }

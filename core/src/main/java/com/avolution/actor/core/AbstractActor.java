@@ -6,10 +6,8 @@ import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.lifecycle.LifecycleState;
 import com.avolution.actor.mailbox.Mailbox;
-import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.MessageHandler;
-import com.avolution.actor.message.MessageType;
-import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.*;
+import com.avolution.actor.metrics.ActorMetrics;
 import com.avolution.actor.metrics.ActorMetricsCollector;
 import com.avolution.actor.pattern.AskPattern;
 import com.avolution.actor.strategy.ActorStrategy;
@@ -30,6 +28,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+
+import static com.avolution.actor.supervision.Directive.RESTART;
+import static com.avolution.actor.supervision.Directive.STOP;
 
 /**
  * Actor抽象基类，提供基础实现
@@ -164,7 +165,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
     /**
      * 处理死信消息
      */
-    protected void handleDeadLetter(Envelope<?> envelope) {
+    public void handleDeadLetter(Envelope<?> envelope) {
         if (context == null || context.system() == null) {
             return;
         }
@@ -230,19 +231,39 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
             throw new IllegalArgumentException("Message cannot be null");
         }
         if (!isTerminated()) {
-            Envelope<T> envelope=new Envelope<>(message,sender,this,MessageType.NORMAL,1);
+            Envelope<T> envelope=new Envelope<>(message,sender,this,MessageType.NORMAL,0);
             context.tell(envelope);
+        }
+    }
+
+    public void tell(Signal signal, ActorRef sender) {
+        if (signal == null) {
+            throw new IllegalArgumentException("Signal cannot be null");
+        }
+        if (!isTerminated()) {
+            SignalEnvelope envelope = createSignalEnvelope(signal, sender);
+            tell(envelope);
         }
     }
 
     @Override
-    public void tell(Signal message, ActorRef sender) {
+    public void tell(SignalEnvelope envelope) {
         if (!isTerminated()) {
-            Envelope<?> envelope=new Envelope(message,sender,this,MessageType.SYSTEM,1);
             context.tell(envelope);
         }
     }
 
+    private SignalEnvelope createSignalEnvelope(Signal signal, ActorRef sender) {
+        if (signal == Signal.KILL || signal == Signal.ESCALATE) {
+            return new SignalEnvelope(signal, sender, (ActorRef<Signal>) getSelf(),
+                    SignalPriority.HIGH, SignalScope.SINGLE);
+        } else if (signal.isLifecycleSignal()) {
+            return signal.envelope(sender, (ActorRef<Signal>) getSelf());
+        } else {
+            return new SignalEnvelope(signal, sender, (ActorRef<Signal>) getSelf(),
+                    SignalPriority.LOW, SignalScope.SINGLE);
+        }
+    }
 
     @Override
     public String path() {
@@ -262,45 +283,192 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
 
 
     @Override
-    public void handle(Envelope<T> message) throws Exception {
-        // 检查是否已经处理过该消息
-        if (message.hasBeenProcessedBy(path())) {
-            logger.warn("Detected circular message delivery: {} in actor: {}", message.getMessage().getClass().getSimpleName(), path());
-            handleDeadLetter(message);
-            return;
-        }
-
-        if (isTerminated()) {
-            logger.warn("Actor is terminated, cannot process message: {}", message.getMessage().getClass().getSimpleName());
-            handleDeadLetter(message);
-            return;
-        }
-
-        // 标记消息已被当前 Actor 处理
-        message.markProcessed(path());
-
-        long startTime = System.nanoTime();
-        boolean success = true;
-
+    public void handle(Envelope<T> envelope) throws Exception {
+        currentMessage = envelope;
         currentProcessingThread = Thread.currentThread();
+
         try {
-            // 处理消息
-            strategy.beforeMessageHandle(message, this);
-            currentMessage = message;
-            strategy.handleMessage(message, this);
+            T message = envelope.getMessage();
+            Class<?> messageClass = message.getClass();
+
+            Consumer<Object> handler = handlers.get(messageClass);
+            if (handler != null) {
+                strategy.beforeMessageHandle(envelope, this);
+                handler.accept(message);
+                strategy.afterMessageHandle(envelope, this, true);
+            } else {
+                unhandled(message);
+            }
         } catch (Exception e) {
-            success = false;
-            strategy.handleFailure(e, message, this);
+            strategy.handleFailure(e, envelope, this);
+            throw e;
         } finally {
             currentMessage = null;
-            strategy.afterMessageHandle(message, this, success);
-            if (metricsCollector != null) {
-                metricsCollector.recordMessage(startTime, success);
-            }
-            currentProcessingThread=null;
+            currentProcessingThread = null;
+        }
+    }
+
+    @Override
+    public void handleSignal(Signal signal) throws Exception {
+        if (signal == null) {
+            throw new IllegalArgumentException("Signal cannot be null");
         }
 
+        // 创建一个特殊的信号包装器
+        @SuppressWarnings("unchecked")
+        Envelope<Signal> envelope = new Envelope<>(
+                signal,
+                getSelf(),
+                (ActorRef<Signal>) getSelf(),
+                MessageType.SYSTEM,
+                0
+        );
+
+        try {
+            // 使用正确的类型参数调用策略方法
+            @SuppressWarnings("unchecked")
+            ActorStrategy<Signal> signalStrategy = (ActorStrategy<Signal>) strategy;
+            signalStrategy.beforeMessageHandle(envelope, (AbstractActor<Signal>) this);
+
+            // 记录信号处理开始
+            metricsCollector.incrementSignalCount();
+
+            switch (signal.getType()) {
+                case LIFECYCLE -> handleLifecycleSignal(signal);
+                case CONTROL -> handleControlSignal(signal);
+                case SUPERVISION -> handleSupervisionSignal(signal);
+                case QUERY -> handleQuerySignal(signal);
+                default -> {
+                    logger.warn("Unhandled signal type received: {} in actor: {}", signal.getType(), path());
+                    unhandled((T) signal);
+                }
+            }
+
+            signalStrategy.afterMessageHandle(envelope, (AbstractActor<Signal>) this, true);
+        } catch (Exception e) {
+            metricsCollector.incrementFailureCount();
+            @SuppressWarnings("unchecked")
+            ActorStrategy<Signal> signalStrategy = (ActorStrategy<Signal>) strategy;
+            signalStrategy.handleFailure(e, envelope, (AbstractActor<Signal>) this);
+            throw e;
+        }
     }
+
+    private void handleLifecycleSignal(Signal signal) {
+        try {
+            switch (signal) {
+                case START -> {
+                    logger.debug("Handling START signal in actor: {}", path());
+                    start();
+                }
+                case STOP -> {
+                    logger.debug("Handling STOP signal in actor: {}", path());
+                    stopReason = StopReason.SIGNAL_STOP;
+                    stop();
+                }
+                case RESTART -> {
+                    logger.debug("Handling RESTART signal in actor: {}", path());
+                    stopReason = StopReason.RESTART;
+                    doRestart(null);
+                }
+                default -> throw new IllegalArgumentException("Unknown lifecycle signal: " + signal);
+            }
+        } catch (Exception e) {
+            logger.error("Error handling lifecycle signal: {} in actor: {}", signal, path(), e);
+            throw e;
+        }
+    }
+
+    private void handleControlSignal(Signal signal) {
+        switch (signal) {
+            case SUSPEND -> context.suspend();
+            case RESUME -> context.resume();
+            case POISON_PILL -> {
+                stopReason = StopReason.POISON_PILL;
+                stop();
+            }
+            case KILL -> {
+                stopReason = StopReason.KILLED;
+                forceStop();
+            }
+        }
+    }
+
+    private void handleSupervisionSignal(Signal signal) {
+        switch (signal) {
+            case ESCALATE -> context.escalate(null);
+            case SUPERVISE -> strategy.handleFailure(null, getCurrentMessage(), this);
+        }
+    }
+
+    private void handleQuerySignal(Signal signal) {
+        try {
+            switch (signal) {
+                case STATUS -> {
+                    ActorStatus status = new ActorStatus(
+                            path(),
+                            getLifecycleState(),
+                            context.getChildren().size(),
+                            currentMessage != null
+                    );
+                    // 修复: 使用正确的类型转换
+                    context.tell(new Envelope<>(
+                            (T) status,
+                            getSelf(),
+                            (ActorRef<T>) getSelf(),
+                            MessageType.NORMAL,
+                            0
+                    ));
+                }
+                case METRICS -> {
+                    ActorMetrics metrics = metricsCollector.getMetrics();
+                    // 修复: 使用正确的类型转换
+                    context.tell(new Envelope<>(
+                            (T) metrics,
+                            getSelf(),
+                            (ActorRef<T>) getSelf(),
+                            MessageType.NORMAL,
+                            0
+                    ));
+                }
+                default -> throw new IllegalArgumentException("Unknown query signal: " + signal);
+            }
+        } catch (Exception e) {
+            logger.error("Error handling query signal: {} in actor: {}", signal, path(), e);
+            throw e;
+        }
+    }
+
+    @Override
+    public CompletableFuture<Void> waitForMessageProcessing() {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        try {
+            // 1. 立即中断当前处理线程
+            interruptCurrentProcessing();
+            // 2. 完成future
+            future.complete(null);
+        } catch (Exception e) {
+            logger.error("Error during force message processing termination: {}", context.getPath(), e);
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    @Override
+    public void interruptCurrentProcessing() {
+        Thread processingThread = currentProcessingThread;
+        if (processingThread != null) {
+            processingThread.interrupt();
+            currentProcessingThread = null;
+        }
+        currentMessage = null;
+    }
+
+    @Override
+    public Envelope<T> getCurrentMessage() {
+        return currentMessage;
+    }
+
 
     public <R> CompletableFuture<R> ask(T message, Duration timeout) {
         return AskPattern.ask(
@@ -390,6 +558,8 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
         return StopReason.PARENT_STOP.equals(stopReason);
     }
 
+
+
     @Override
     protected void doRestart(Throwable reason) {
         onPreRestart(reason);
@@ -398,30 +568,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
         onPostRestart(reason);
     }
 
-    @Override
-    public CompletableFuture<Void> waitForMessageProcessing() {
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        try {
-            // 1. 立即中断当前处理线程
-            interruptCurrentProcessing();
-            // 2. 完成future
-            future.complete(null);
-        } catch (Exception e) {
-            logger.error("Error during force message processing termination: {}", context.getPath(), e);
-            future.completeExceptionally(e);
-        }
-        return future;
-    }
 
-    @Override
-    protected void interruptCurrentProcessing() {
-        Thread processingThread = currentProcessingThread;
-        if (processingThread != null) {
-            processingThread.interrupt();
-            currentProcessingThread = null;
-        }
-        currentMessage = null;
-    }
 
     @Override
     protected void doCleanup() {

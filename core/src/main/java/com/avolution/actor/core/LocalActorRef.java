@@ -1,8 +1,7 @@
 package com.avolution.actor.core;
 
 import com.avolution.actor.message.MessageType;
-import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.Terminated;
+import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 
 import java.lang.ref.WeakReference;
@@ -63,7 +62,7 @@ public class LocalActorRef<T> implements ActorRef<T> {
     }
 
     @Override
-    public void tell(Signal signal, ActorRef sender) {
+    public void tell(SignalEnvelope signal, ActorRef sender) {
         if (isTerminated()) {
             handleDeadLetter(signal, sender);
         } else {

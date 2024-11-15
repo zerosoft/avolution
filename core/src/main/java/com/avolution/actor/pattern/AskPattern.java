@@ -50,10 +50,6 @@ public final class AskPattern {
                 future.complete(response);
             }
 
-            @Override
-            protected void onPostStart() {
-
-            }
 
             @Override
             public void onPostStop() {

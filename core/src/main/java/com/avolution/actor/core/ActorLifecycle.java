@@ -36,6 +36,7 @@ public abstract class ActorLifecycle {
             return CompletableFuture.completedFuture(null);
         }
         return doStop().whenComplete((v, e) -> lifecycleState.set(LifecycleState.STOPPED));
+
     }
 
     public final void restart(Throwable reason) throws ActorRestartException {

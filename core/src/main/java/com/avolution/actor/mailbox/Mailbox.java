@@ -1,160 +1,109 @@
 package com.avolution.actor.mailbox;
 
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.MessageHandler;
-
-import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.SignalEnvelope;
+import com.avolution.actor.message.SignalPriority;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Actor消息邮箱实现
  */
 public class Mailbox {
-    private final Queue<Envelope> queue;
-    private final Queue<Envelope> systemQueue;
-    private final MailboxMetrics metrics;
+    private static final Logger logger = LoggerFactory.getLogger(Mailbox.class);
 
-    private final AtomicBoolean suspended;
-    private final AtomicBoolean processing;
-    private final AtomicInteger unprocessedMessages;
+    private final PriorityBlockingQueue<Envelope<?>> messages;
+    private final AtomicBoolean suspended = new AtomicBoolean(false);
+    private final AtomicReference<Thread> processingThread = new AtomicReference<>();
+    private volatile Envelope<?> currentMessage;
 
-    private final int throughput;
-    private final AtomicBoolean closed = new AtomicBoolean(false);
-
-    public Mailbox(int throughput) {
-        this.queue = new ConcurrentLinkedQueue<>();
-        this.systemQueue = new ConcurrentLinkedQueue<>();
-
-        this.metrics = new MailboxMetrics();
-
-        this.suspended = new AtomicBoolean(false);
-        this.processing = new AtomicBoolean(false);
-
-        this.unprocessedMessages = new AtomicInteger(0);
-        this.throughput = throughput;
+    public Mailbox(int capacity) {
+        this.messages = new PriorityBlockingQueue<>(capacity,
+                (e1, e2) -> {
+                    if (e1 instanceof SignalEnvelope && e2 instanceof SignalEnvelope) {
+                        return ((SignalEnvelope) e1).priority().compareTo(((SignalEnvelope) e2).priority());
+                    }
+                    return e1.getPriority().compareTo(e2.getPriority());
+                });
     }
 
-    /**
-     * 入队消息
-     */
-    public boolean enqueue(Envelope envelope) {
-        if (closed.get() || suspended.get()) {
-            metrics.messageRejected();
-            return false;
+    public void enqueue(Envelope<?> envelope) {
+        if (suspended.get()) {
+            if (envelope instanceof SignalEnvelope &&
+                    ((SignalEnvelope) envelope).priority() == SignalPriority.HIGH) {
+                // 高优先级信号即使在暂停状态也允许入队
+                offerMessage(envelope);
+            }
+            return;
         }
-
-        boolean success;
-        if (envelope.isSystemMessage()) {
-            success = systemQueue.offer(envelope);
-        } else {
-            success = queue.offer(envelope);
-        }
-
-        if (success) {
-            unprocessedMessages.incrementAndGet();
-            metrics.messageEnqueued();
-        }
-        return success;
+        offerMessage(envelope);
     }
 
-    /**
-     * 处理队列中的消息
-     */
-    public void process(MessageHandler<?> handler) {
-        if (closed.get()) {
+    private void offerMessage(Envelope<?> envelope) {
+        if (!messages.offer(envelope, 100, TimeUnit.MILLISECONDS)) {
+            logger.warn("Failed to enqueue message due to timeout: {}", envelope);
+        }
+    }
+
+    public void process(AbstractActor<?> actor) {
+        if (suspended.get() && !hasHighPrioritySignals()) {
             return;
         }
 
-        if (processing.compareAndSet(false, true)) {
-            try {
-                int processed = 0;
-                while (processed < throughput && !suspended.get()) {
-                    // 优先处理系统消息
-                    Envelope msg = systemQueue.poll();
-                    if (msg == null) {
-                        msg = queue.poll();
-                    }
-                    if (msg == null){
-                        break;
-                    }
-
-                    try {
-                        long nanoTime = System.nanoTime();
-                        // 处理消息
-                        handler.handle(msg);
-
-                        metrics.messageProcessed(System.nanoTime()-nanoTime);
-                    } catch (Exception e) {
-                        metrics.messageFailure();
-//                        handler.handleFailure(msg, e);
-                    } finally {
-                        unprocessedMessages.decrementAndGet();
-                        processed++;
-                    }
+        processingThread.set(Thread.currentThread());
+        try {
+            while (!suspended.get() || hasHighPrioritySignals()) {
+                currentMessage = messages.poll();
+                if (currentMessage == null) {
+                    break;
                 }
-            } finally {
-                processing.set(false);
+
+                try {
+                    processMessage(actor, currentMessage);
+                } catch (Exception e) {
+                    handleProcessingError(actor, e);
+                } finally {
+                    currentMessage = null;
+                }
             }
+        } finally {
+            processingThread.set(null);
         }
     }
 
-    /**
-     * 暂停消息处理
-     */
-    public void suspend() {
-        suspended.set(true);
-        metrics.mailboxSuspended();
+    private void processMessage(AbstractActor<?> actor, Envelope<?> envelope) throws Exception {
+        if (envelope instanceof SignalEnvelope) {
+            actor.handleSignal(((SignalEnvelope) envelope).getMessage());
+        } else {
+            actor.handle((Envelope) envelope);
+        }
     }
 
-    /**
-     * 恢复消息处理
-     */
-    public void resume() {
-        suspended.set(false);
-        metrics.mailboxResumed();
+    private void handleProcessingError(AbstractActor<?> actor, Exception e) {
+        logger.error("Error processing message: {}", currentMessage, e);
+        actor.getContext().escalate(e);
     }
 
-    /**
-     * 清空邮箱
-     */
-    public void clear() {
-        int cleared = unprocessedMessages.get();
-        queue.clear();
-        systemQueue.clear();
-        unprocessedMessages.set(0);
-        metrics.messagesCleared(cleared);
-    }
-
-    /**
-     * 获取当前队列大小
-     */
-    public int size() {
-        return unprocessedMessages.get();
-    }
-
-    /**
-     * 获取度量信息
-     */
-    public MailboxMetrics getMetrics() {
-        return metrics;
-    }
-
-    /**
-     * 关闭邮箱
-     */
-    public void close() {
-        closed.set(true);
-        clear();
-    }
-
-    private void scheduleProcessing(MessageHandler handler) {
-        CompletableFuture.runAsync(() -> process(handler));
+    private boolean hasHighPrioritySignals() {
+        Envelope<?> peek = messages.peek();
+        return peek instanceof SignalEnvelope &&
+                ((SignalEnvelope) peek).priority() == SignalPriority.HIGH;
     }
 
     public boolean hasMessages() {
-        return !systemQueue.isEmpty() || !queue.isEmpty();
+        return !messages.isEmpty();
+    }
+
+    public void suspend() {
+        suspended.set(true);
+    }
+
+    public void resume() {
+        suspended.set(false);
     }
 }

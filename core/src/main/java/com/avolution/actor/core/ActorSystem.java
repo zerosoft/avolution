@@ -5,11 +5,12 @@ import com.avolution.actor.core.context.ActorContextManager;
 import com.avolution.actor.core.context.ActorRefRegistry;
 import com.avolution.actor.dispatch.Dispatcher;
 import com.avolution.actor.exception.ActorInitializationException;
-import com.avolution.actor.exception.ActorStopException;
 import com.avolution.actor.exception.ActorSystemCreationException;
 import com.avolution.actor.lifecycle.LifecycleState;
-import com.avolution.actor.message.PoisonPill;
-import com.avolution.actor.message.SystemStopMessage;
+import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.SignalEnvelope;
+import com.avolution.actor.message.SignalPriority;
+import com.avolution.actor.message.SignalScope;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.system.actor.*;
@@ -356,12 +357,51 @@ public class ActorSystem {
             return CompletableFuture.completedFuture(null);
         }
 
+        if (state.get() != SystemState.RUNNING) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Actor system is not running")
+            );
+        }
+
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+        try {
+            // 创建高优先级的停止信号
+            SignalEnvelope stopSignal = new SignalEnvelope(
+                    Signal.STOP,
+                    ActorRef.noSender(),
+                    (ActorRef<Signal>) actor,
+                    SignalPriority.HIGH,
+                    SignalScope.SUBTREE
+            );
 
-        // 使用Actor的消息处理线程
-        actor.tell(new SystemStopMessage(stopFuture), ActorRef.noSender());
+            // 发送停止信号
+            actor.tell(stopSignal);
 
-        return stopFuture;
+            // 设置超时处理
+            return stopFuture.orTimeout(5, TimeUnit.SECONDS)
+                    .exceptionally(throwable -> {
+                        if (throwable instanceof TimeoutException) {
+                            log.warn("Timeout while stopping actor: {}, sending KILL signal", actor.path());
+                            // 发送 KILL 信号强制停止
+                            SignalEnvelope killSignal = new SignalEnvelope(
+                                    Signal.KILL,
+                                    ActorRef.noSender(),
+                                    (ActorRef<Signal>) actor,
+                                    SignalPriority.HIGH,
+                                    SignalScope.SUBTREE
+                            );
+                            actor.tell(killSignal);
+                        } else {
+                            log.error("Error while stopping actor: {}", actor.path(), throwable);
+                        }
+                        return null;
+                    });
+
+        } catch (Exception e) {
+            log.error("Failed to initiate actor stop: {}", actor.path(), e);
+            stopFuture.completeExceptionally(e);
+            return stopFuture;
+        }
     }
 
     public CompletableFuture<Void> terminate() {

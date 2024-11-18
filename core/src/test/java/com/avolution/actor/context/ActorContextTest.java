@@ -1,7 +1,6 @@
 package com.avolution.actor.context;
 
 import com.avolution.actor.core.*;
-import com.avolution.actor.message.PoisonPill;
 import com.avolution.actor.pattern.ASK;
 import com.avolution.actor.supervision.Directive;
 import com.avolution.actor.supervision.SupervisorStrategy;

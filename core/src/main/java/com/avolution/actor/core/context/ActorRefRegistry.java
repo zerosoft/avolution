@@ -2,7 +2,7 @@ package com.avolution.actor.core.context;
 
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.message.Terminated;
+import com.avolution.actor.message.Signal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,12 +13,13 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class ActorRefRegistry {
     private static final Logger logger = LoggerFactory.getLogger(ActorRefRegistry.class);
-    // Actor系统引用
+
     private final ActorSystem system;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    // 核心索引映射
     private final Map<String, ActorRef<?>> pathToRef = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> parentToChildren = new ConcurrentHashMap<>();
-
     private final Map<String, Set<String>> watcherToWatched = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> watchedToWatcher = new ConcurrentHashMap<>();
 
@@ -27,41 +28,51 @@ public class ActorRefRegistry {
     }
 
     public void register(ActorRef<?> ref, String parentPath) {
-        if (ref == null) {
-            throw new IllegalArgumentException("ActorRef cannot be null");
+        if (ref == null || ref.path() == null) {
+            throw new IllegalArgumentException("Invalid actor reference");
         }
 
         lock.writeLock().lock();
         try {
             String path = ref.path();
+
+            // 检查是否已存在
             if (pathToRef.containsKey(path)) {
-                throw new IllegalStateException("Actor already registered at path: " + path);
+                throw new IllegalStateException("Actor already registered: " + path);
             }
 
+            // 注册主索引
             pathToRef.put(path, ref);
 
-            if (parentPath != null) {
+            // 建立父子关系
+            if (parentPath != null && !parentPath.isEmpty()) {
                 parentToChildren.computeIfAbsent(parentPath, k -> ConcurrentHashMap.newKeySet())
                         .add(path);
             }
 
-            logger.debug("Registered ActorRef: {}", path);
+            logger.debug("Registered ActorRef: {} under parent: {}", path, parentPath);
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     public void unregister(String path, String reason) {
-        if (path == null) {
-            throw new IllegalArgumentException("Path cannot be null");
-        }
+        if (path == null) return;
 
         lock.writeLock().lock();
         try {
-            // 递归终止子Actor
+            // 获取Actor引用
+            ActorRef<?> ref = pathToRef.get(path);
+            if (ref == null) {
+                logger.warn("Attempting to unregister non-existent actor: {}", path);
+                return;
+            }
+
+            // 递归停止子Actor
             Set<String> children = parentToChildren.get(path);
             if (children != null) {
-                new HashSet<>(children).forEach(childPath -> unregister(childPath, "Parent stopped"));
+                new HashSet<>(children).forEach(childPath ->
+                        unregister(childPath, "Parent actor stopping: " + path));
                 parentToChildren.remove(path);
             }
 
@@ -71,55 +82,76 @@ public class ActorRefRegistry {
             // 清理所有相关索引
             cleanupReferences(path);
 
-            logger.debug("Unregistered ActorRef: {}", path);
+            logger.debug("Unregistered ActorRef: {}, reason: {}", path, reason);
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     private void cleanupReferences(String path) {
-        // 清理父子关系
-        parentToChildren.values().forEach(childSet -> childSet.remove(path));
+        try {
+            // 1. 清理主索引
+            pathToRef.remove(path);
 
-        // 清理监视关系
-        Set<String> watched = watcherToWatched.remove(path);
-        if (watched != null) {
-            watched.forEach(watchedPath -> {
-                Set<String> watchers = watchedToWatcher.get(watchedPath);
-                if (watchers != null) {
-                    watchers.remove(path);
-                    if (watchers.isEmpty()) {
-                        watchedToWatcher.remove(watchedPath);
+            // 2. 清理父子关系
+            parentToChildren.values().forEach(children -> children.remove(path));
+            parentToChildren.remove(path);
+
+            // 3. 清理监视关系
+            // 3.1 清理作为观察者的记录
+            Set<String> watchedActors = watcherToWatched.remove(path);
+            if (watchedActors != null) {
+                watchedActors.forEach(watchedPath -> {
+                    Set<String> watchers = watchedToWatcher.get(watchedPath);
+                    if (watchers != null) {
+                        watchers.remove(path);
+                        // 如果没有观察者了，清理整个集合
+                        if (watchers.isEmpty()) {
+                            watchedToWatcher.remove(watchedPath);
+                        }
                     }
+                });
+            }
+
+            // 3.2 清理作为被观察者的记录
+            Set<String> watchers = watchedToWatcher.remove(path);
+            if (watchers != null) {
+                watchers.forEach(watcherPath -> {
+                    Set<String> watchedPaths = watcherToWatched.get(watcherPath);
+                    if (watchedPaths != null) {
+                        watchedPaths.remove(path);
+                        // 如果没有被观察的Actor了，清理整个集合
+                        if (watchedPaths.isEmpty()) {
+                            watcherToWatched.remove(watcherPath);
+                        }
+                    }
+                });
+            }
+
+            logger.debug("Cleaned up all references for actor: {}", path);
+        } catch (Exception e) {
+            logger.error("Error cleaning up references for actor: {}", path, e);
+            // 确保基本清理完成
+            pathToRef.remove(path);
+            parentToChildren.remove(path);
+        }
+    }
+
+    private void notifyWatchers(String path, String reason) {
+        Set<String> watchers = watchedToWatcher.get(path);
+        if (watchers != null) {
+            watchers.forEach(watcherPath -> {
+                ActorRef<?> watcher = pathToRef.get(watcherPath);
+                if (watcher != null) {
+                    watcher.tell(Signal.TERMINATED, ActorRef.noSender());
                 }
             });
-        }
-
-        // 移除主索引
-        pathToRef.remove(path);
-    }
-
-    public Optional<ActorRef<?>> getRef(String path) {
-        lock.readLock().lock();
-        try {
-            return Optional.ofNullable(pathToRef.get(path));
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    public Set<String> getChildren(String parentPath) {
-        lock.readLock().lock();
-        try {
-            return parentToChildren.getOrDefault(parentPath, Collections.emptySet());
-        } finally {
-            lock.readLock().unlock();
         }
     }
 
     public void watch(ActorRef<?> watcher, ActorRef<?> watched) {
-        if (watcher == null || watched == null || watcher.equals(watched)) {
-            throw new IllegalArgumentException("Invalid watch parameters");
+        if (!isValidWatchRequest(watcher, watched)) {
+            return;
         }
 
         String watcherPath = watcher.path();
@@ -128,8 +160,7 @@ public class ActorRefRegistry {
         lock.writeLock().lock();
         try {
             if (!pathToRef.containsKey(watchedPath)) {
-                // 如果目标已经终止，直接发送终止通知
-                watcher.tell(new Terminated(watchedPath, "Actor already terminated", false), ActorRef.noSender());
+                watcher.tell(Signal.TERMINATED,ActorRef.noSender());
                 return;
             }
 
@@ -144,58 +175,25 @@ public class ActorRefRegistry {
         }
     }
 
-    public void unwatch(ActorRef<?> watcher, ActorRef<?> watched) {
-        String watcherPath = watcher.path();
-        String watchedPath = watched.path();
-
-        lock.writeLock().lock();
-        try {
-            Set<String> watchedSet = watcherToWatched.get(watcherPath);
-            if (watchedSet != null) {
-                watchedSet.remove(watchedPath);
-                if (watchedSet.isEmpty()) {
-                    watcherToWatched.remove(watcherPath);
-                }
-            }
-
-            Set<String> watcherSet = watchedToWatcher.get(watchedPath);
-            if (watcherSet != null) {
-                watcherSet.remove(watcherPath);
-                if (watcherSet.isEmpty()) {
-                    watchedToWatcher.remove(watchedPath);
-                }
-            }
-        } finally {
-            lock.writeLock().unlock();
-        }
+    private boolean isValidWatchRequest(ActorRef<?> watcher, ActorRef<?> watched) {
+        return watcher != null && watched != null &&
+                watcher.path() != null && watched.path() != null &&
+                !watcher.equals(watched);
     }
 
-    private void notifyWatchers(String terminatedPath, String reason) {
-        Set<String> watchers = watchedToWatcher.get(terminatedPath);
-        if (watchers != null) {
-            for (String watcherPath : new HashSet<>(watchers)) {
-                ActorRef<?> watcherRef = pathToRef.get(watcherPath);
-                if (watcherRef != null) {
-                    watcherRef.tell(new Terminated(terminatedPath, reason, false), ActorRef.noSender());
-                }
-            }
-            watchedToWatcher.remove(terminatedPath);
-        }
-    }
-
-    public int getRefCount() {
+    public Optional<ActorRef<?>> getRef(String path) {
         lock.readLock().lock();
         try {
-            return pathToRef.size();
+            return Optional.ofNullable(pathToRef.get(path));
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    public boolean contains(String path) {
+    public Set<String> getChildren(String parentPath) {
         lock.readLock().lock();
         try {
-            return pathToRef.containsKey(path);
+            return new HashSet<>(parentToChildren.getOrDefault(parentPath, Collections.emptySet()));
         } finally {
             lock.readLock().unlock();
         }

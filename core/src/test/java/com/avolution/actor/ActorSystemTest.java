@@ -3,7 +3,7 @@ package com.avolution.actor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
-import com.avolution.actor.message.PoisonPill;
+import com.avolution.actor.message.Signal;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,7 +87,7 @@ public class ActorSystemTest {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        actor.tell(Signal.KILL, ActorRef.noSender());
         try {
             Thread.sleep(1_000);
         } catch (InterruptedException e) {

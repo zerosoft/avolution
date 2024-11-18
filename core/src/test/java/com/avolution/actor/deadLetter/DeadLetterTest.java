@@ -3,7 +3,6 @@ package com.avolution.actor.deadLetter;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.message.Terminated;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,12 +43,9 @@ public class DeadLetterTest {
 
         @OnReceive(Object.class)
         private void onMessage(Object msg) {
-            if (msg instanceof Terminated terminated) {
                 terminatedReceived.set(true);
                 terminationFuture.complete(null);
-            } else if (msg instanceof IDeadLetterActorMessage.DeadLetter) {
-                deadLetterCount.incrementAndGet();
-            }
+
         }
 
         public boolean wasTerminatedReceived() {

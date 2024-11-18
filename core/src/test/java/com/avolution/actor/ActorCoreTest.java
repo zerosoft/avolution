@@ -1,7 +1,7 @@
 package com.avolution.actor;
 
 import com.avolution.actor.core.*;
-import com.avolution.actor.message.PoisonPill;
+import com.avolution.actor.message.Signal;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -55,7 +55,7 @@ class ActorCoreTest {
         assertTrue(children.contains(child.path()));
 
 
-        child3.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+        child3.tell(Signal.KILL,ActorRef.noSender());
 
         try {
             TimeUnit.MILLISECONDS.sleep(100L);
@@ -66,7 +66,7 @@ class ActorCoreTest {
         assertFalse(children.contains(child3.path()));
 
 
-        parentRef.tell(PoisonPill.INSTANCE,ActorRef.noSender());
+        parentRef.tell(Signal.KILL,ActorRef.noSender());
 
         try {
             TimeUnit.MILLISECONDS.sleep(100L);
@@ -95,7 +95,7 @@ class ActorCoreTest {
         assertEquals(1, actor.getProcessedCount());
 
         // 停止Actor
-        ref.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        ref.tell(Signal.KILL, ActorRef.noSender());
         Thread.sleep(100);
         assertTrue(actor.wasPostStopCalled());
         assertTrue(ref.isTerminated());

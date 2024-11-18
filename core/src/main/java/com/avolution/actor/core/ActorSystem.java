@@ -6,6 +6,7 @@ import com.avolution.actor.core.context.ActorRefRegistry;
 import com.avolution.actor.dispatch.Dispatcher;
 import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.exception.ActorSystemCreationException;
+import com.avolution.actor.exception.SystemFailureException;
 import com.avolution.actor.lifecycle.LifecycleState;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalEnvelope;
@@ -319,6 +320,7 @@ public class ActorSystem {
         }
     }
 
+
     private void validateActorName(String name) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Actor name cannot be null or empty");
@@ -366,31 +368,16 @@ public class ActorSystem {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
         try {
             // 创建高优先级的停止信号
-            SignalEnvelope stopSignal = new SignalEnvelope(
-                    Signal.STOP,
-                    ActorRef.noSender(),
-                    (ActorRef<Signal>) actor,
-                    SignalPriority.HIGH,
-                    SignalScope.SUBTREE
-            );
-
             // 发送停止信号
-            actor.tell(stopSignal);
+            actor.tell(Signal.KILL,ActorRef.noSender());
 
             // 设置超时处理
-            return stopFuture.orTimeout(5, TimeUnit.SECONDS)
+            return stopFuture.orTimeout(10, TimeUnit.SECONDS)
                     .exceptionally(throwable -> {
                         if (throwable instanceof TimeoutException) {
                             log.warn("Timeout while stopping actor: {}, sending KILL signal", actor.path());
                             // 发送 KILL 信号强制停止
-                            SignalEnvelope killSignal = new SignalEnvelope(
-                                    Signal.KILL,
-                                    ActorRef.noSender(),
-                                    (ActorRef<Signal>) actor,
-                                    SignalPriority.HIGH,
-                                    SignalScope.SUBTREE
-                            );
-                            actor.tell(killSignal);
+                            actor.tell(Signal.KILL,ActorRef.noSender());
                         } else {
                             log.error("Error while stopping actor: {}", actor.path(), throwable);
                         }
@@ -438,6 +425,95 @@ public class ActorSystem {
             }
         }
         return terminationFuture;
+    }
+
+    public void handleSystemFailure(Throwable cause, ActorRef<?> failedActor) {
+        try {
+            log.error("System level failure from actor: {}", failedActor.path(), cause);
+
+            // 2. 通知死亡监视器
+            deathWatch.signalTermination(failedActor, false);
+
+            // 3. 发送到系统守护者
+            systemGuardian.tell(Signal.SYSTEM_FAILURE, ActorRef.noSender());
+
+            // 4. 根据错误严重程度决定是否需要停止 Actor
+            if (isSystemFailure(cause)) {
+                stopActor(failedActor)
+                        .orTimeout(5, TimeUnit.SECONDS)
+                        .exceptionally(ex -> {
+                            log.error("Failed to stop actor after system failure: {}", failedActor.path(), ex);
+                            return null;
+                        });
+            }
+        } catch (Exception e) {
+            log.error("Error handling system failure", e);
+        }
+    }
+
+    private CompletableFuture<Void> stopActor(ActorRef<?> actor) {
+        CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+        try {
+            // 1. 获取Actor上下文
+            Optional<ActorContext> contextOptional = contextManager.getContext(actor.path());
+            if (contextOptional.isEmpty()) {
+                stopFuture.completeExceptionally(
+                        new IllegalStateException("Actor context not found: " + actor.path()));
+                return stopFuture;
+            }
+
+            ActorContext context=contextOptional.get();
+            // 2. 停止子Actor
+            CompletableFuture<Void> childrenStopFuture = stopChildren(context);
+
+            // 3. 停止当前Actor
+            childrenStopFuture.thenRun(() -> {
+                try {
+                    // 执行停止流程
+                    context.stop()
+                            .thenRun(() -> {
+                                // 清理注册信息
+                                unregisterActor(actor.path());
+                                // 通知死亡监视器
+                                deathWatch.signalTermination(actor, true);
+                                stopFuture.complete(null);
+                            })
+                            .exceptionally(ex -> {
+                                stopFuture.completeExceptionally(ex);
+                                return null;
+                            });
+                } catch (Exception e) {
+                    stopFuture.completeExceptionally(e);
+                }
+            });
+
+        } catch (Exception e) {
+            stopFuture.completeExceptionally(e);
+        }
+        return stopFuture;
+    }
+
+    private CompletableFuture<Void> stopChildren(ActorContext context) {
+        List<CompletableFuture<Void>> childrenFutures = new ArrayList<>();
+
+        // 获取所有子Actor的引用
+        Map<String, ActorRef> children = context.getChildren();
+
+        // 停止每个子Actor
+        for (ActorRef child : children.values()) {
+            childrenFutures.add(stopActor(child));
+        }
+
+        // 等待所有子Actor停止完成
+        return CompletableFuture.allOf(
+                childrenFutures.toArray(new CompletableFuture[0])
+        );
+    }
+
+    private boolean isSystemFailure(Throwable cause) {
+        return cause instanceof SystemFailureException
+                || cause instanceof OutOfMemoryError
+                || cause instanceof StackOverflowError;
     }
 
     private void stopUserActors() {

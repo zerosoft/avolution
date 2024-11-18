@@ -2,8 +2,6 @@ package com.avolution.actor.strategy;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.PoisonPill;
-import com.avolution.actor.supervision.Directive;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

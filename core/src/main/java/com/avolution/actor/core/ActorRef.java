@@ -21,14 +21,41 @@ public interface ActorRef<T> {
      */
     void tell(T message, ActorRef sender);
 
+    // 信号发送的默认实现
+    default void signal(Signal signal) {
+        tell((T) signal, ActorRef.noSender());
+    }
+
     /**
      * 发送信号给Actor
      * @param signal 信号
      * @param sender 发送者
      */
-    void tell(SignalEnvelope signal, ActorRef sender);
+    default void tell(Signal signal, ActorRef sender) {
+        tell((T) signal, sender);
+    }
 
+    // 添加带参数的信号发送
+    default void tell(Signal signal, Object... params) {
+        SignalEnvelope envelope = new SignalEnvelope(signal, ActorRef.noSender(), (ActorRef<Signal>) this);
+        for (int i = 0; i < params.length; i += 2) {
+            if (i + 1 < params.length) {
+                envelope.addAttachment(params[i].toString(), params[i + 1]);
+            }
+        }
+        tell((T) envelope, ActorRef.noSender());
+    }
 
+    // 添加带参数的信号发送
+    default void tell(Signal signal,ActorRef sender, Object... params) {
+        SignalEnvelope envelope = new SignalEnvelope(signal, sender, (ActorRef<Signal>) this);
+        for (int i = 0; i < params.length; i += 2) {
+            if (i + 1 < params.length) {
+                envelope.addAttachment(params[i].toString(), params[i + 1]);
+            }
+        }
+        tell((T) envelope, ActorRef.noSender());
+    }
     /**
      * 发送消息给Actor 等待返回信息
      * @param message 消息内容

@@ -2,8 +2,7 @@ package com.avolution.actor;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.lifecycle.LifecycleState;
-import com.avolution.actor.message.PoisonPill;
+import com.avolution.actor.message.Signal;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,7 +86,7 @@ public class ActorShutdownTest {
         // 2. 发送长时间处理的消息
         asked.tell(new ShutdownTestActor.LongProcessingMessage(Duration.ofMillis(500)), ActorRef.noSender());
 
-        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        actor.tell(Signal.KILL, ActorRef.noSender());
 
         // 4. 验证关闭过程
         Thread.sleep(3000); // 等待关闭开始

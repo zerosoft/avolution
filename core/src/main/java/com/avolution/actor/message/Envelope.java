@@ -8,8 +8,13 @@ import java.util.Collections;
 import java.util.Map;
 
 import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.lifecycle.LifecycleState;
 
 public class Envelope<T> {
+
+    public void addAttachment(String senderState, Object data) {
+        metadata.put(senderState, data);
+    }
 
     public enum Priority {
         HIGH(0),

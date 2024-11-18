@@ -8,5 +8,6 @@ public enum StopReason {
     PARENT_STOP,       // 父Actor停止
     SYSTEM_STOP,       // 系统停止
     ERROR_STOP,        // 错误导致停止
-    POISON_PILL, KILLED, RESTART, SIGNAL_STOP, SUPERVISION_STOP   // 监督策略导致停止
+    POISON_PILL,
+    KILLED, RESTART, SIGNAL_STOP, SUPERVISION_STOP   // 监督策略导致停止
 }

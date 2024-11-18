@@ -3,7 +3,7 @@ package com.avolution.actor;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.message.PoisonPill;
+import com.avolution.actor.message.Signal;
 import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +46,7 @@ class AbstractActorTest {
         assertTrue(testActor.wasPreStartCalled());
 
         // 发送终止消息
-        actor.tell(PoisonPill.INSTANCE, ActorRef.noSender());
+        actor.tell(Signal.KILL, ActorRef.noSender());
         Thread.sleep(100);
 
         assertTrue(testActor.wasPostStopCalled());

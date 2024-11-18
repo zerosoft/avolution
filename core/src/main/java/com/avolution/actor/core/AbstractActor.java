@@ -5,7 +5,6 @@ import com.avolution.actor.core.annotation.OnReceive;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.lifecycle.LifecycleState;
-import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.*;
 import com.avolution.actor.metrics.ActorMetrics;
 import com.avolution.actor.metrics.ActorMetricsCollector;
@@ -23,14 +22,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import static com.avolution.actor.supervision.Directive.RESTART;
-import static com.avolution.actor.supervision.Directive.STOP;
 
 /**
  * Actor抽象基类，提供基础实现
@@ -175,8 +171,8 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
                 envelope.getSender().path(),
                 envelope.getRecipient().path(),
                 LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                envelope.getMessageType().toString(),
-                envelope.getRetryCount()
+                envelope.getMessageType(),
+                envelope.getRetryCount(),new HashMap<>()
         );
 
         // 记录死信
@@ -236,6 +232,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
         }
     }
 
+    @Override
     public void tell(Signal signal, ActorRef sender) {
         if (signal == null) {
             throw new IllegalArgumentException("Signal cannot be null");
@@ -246,7 +243,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
         }
     }
 
-    @Override
+
     public void tell(SignalEnvelope envelope) {
         if (!isTerminated()) {
             context.tell(envelope);
@@ -319,9 +316,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
         Envelope<Signal> envelope = new Envelope<>(
                 signal,
                 getSelf(),
-                (ActorRef<Signal>) getSelf(),
-                MessageType.SYSTEM,
-                0
+                (ActorRef<Signal>) getSelf(),MessageType.SYSTEM,0
         );
 
         try {
@@ -380,17 +375,31 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
     }
 
     private void handleControlSignal(Signal signal) {
-        switch (signal) {
-            case SUSPEND -> context.suspend();
-            case RESUME -> context.resume();
-            case POISON_PILL -> {
-                stopReason = StopReason.POISON_PILL;
-                stop();
+        try {
+            switch (signal) {
+                case SUSPEND -> {
+                    context.suspend();
+                    logger.debug("Actor suspended: {}", path());
+                }
+                case RESUME -> {
+                    context.resume();
+                    logger.debug("Actor resumed: {}", path());
+                }
+                case POISON_PILL -> {
+                    stopReason = StopReason.POISON_PILL;
+                    stop();
+                    logger.info("Actor poisoned: {}", path());
+                }
+                case KILL -> {
+                    stopReason = StopReason.KILLED;
+                    stop();
+                    logger.info("Actor KILL: {}", path());
+                }
+                default -> logger.warn("Unknown control signal: {} in actor: {}", signal, path());
             }
-            case KILL -> {
-                stopReason = StopReason.KILLED;
-                forceStop();
-            }
+        } catch (Exception e) {
+            logger.error("Error handling control signal: {} in actor: {}", signal, path(), e);
+            throw e;
         }
     }
 
@@ -572,7 +581,7 @@ public abstract class AbstractActor<T>  extends ActorLifecycle implements ActorR
 
     @Override
     protected void doCleanup() {
-
+        context.stop();
     }
 
     public void setContext(ActorContext context) {

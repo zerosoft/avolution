@@ -8,14 +8,16 @@ import java.util.Collections;
 import java.util.Map;
 
 import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.lifecycle.LifecycleState;
 
-public class Envelope<T> {
+/**
+ * Actor消息的 信封
+ * @param
+ */
+public class Envelope {
 
-    public void addAttachment(String senderState, Object data) {
-        metadata.put(senderState, data);
-    }
-
+    /**
+     * 消息 优先级
+     */
     public enum Priority {
         HIGH(0),
         NORMAL(1),
@@ -32,25 +34,30 @@ public class Envelope<T> {
         }
     }
 
+    /**
+     * 消息类型 Id
+     */
     private final String messageId;
-    private final T message;
-    private final ActorRef<?> sender;
-    private final ActorRef<T> recipient;
+    private final Object message;
+
+    private final ActorRef sender;
+    private final ActorRef recipient;
+
     private final Instant timestamp;
     private final MessageType messageType;
+
     private final int retryCount;
     private final Map<String, Object> metadata;
 
     private final Set<String> processedActors;
+
     private final Priority priority;
 
-    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient,
-                    MessageType messageType, int retryCount) {
+    public Envelope(Object message, ActorRef sender, ActorRef recipient,MessageType messageType, int retryCount) {
         this(message, sender, recipient, messageType, retryCount, Priority.NORMAL);
     }
 
-    public Envelope(T message, ActorRef<?> sender, ActorRef<T> recipient,
-                    MessageType messageType, int retryCount, Priority priority) {
+    public Envelope(Object message, ActorRef sender, ActorRef recipient, MessageType messageType, int retryCount, Priority priority) {
         validateInputs(message, recipient);
         this.messageId = UUID.randomUUID().toString();
         this.message = message;
@@ -64,13 +71,13 @@ public class Envelope<T> {
         this.priority = priority;
     }
 
-    private void validateInputs(T message, ActorRef<T> recipient) {
+    private void validateInputs(Object message, ActorRef recipient) {
         if (message == null) {
             throw new IllegalArgumentException("Message cannot be null");
         }
-        if (recipient == null) {
-            throw new IllegalArgumentException("Recipient cannot be null");
-        }
+//        if (recipient == null) {
+//            throw new IllegalArgumentException("Recipient cannot be null");
+//        }
     }
 
     // 基本的 getter 方法
@@ -78,15 +85,15 @@ public class Envelope<T> {
         return messageId;
     }
 
-    public T getMessage() {
+    public Object getMessage() {
         return message;
     }
 
-    public ActorRef<?> getSender() {
+    public ActorRef getSender() {
         return sender;
     }
 
-    public ActorRef<T> getRecipient() {
+    public ActorRef getRecipient() {
         return recipient;
     }
 
@@ -141,12 +148,12 @@ public class Envelope<T> {
     }
 
     // 创建新的 Envelope
-    public Envelope<T> withRetry() {
-        return new Envelope<>(message, sender, recipient, messageType, retryCount + 1, priority);
+    public Envelope withRetry() {
+        return new Envelope(message, sender, recipient, messageType, retryCount + 1, priority);
     }
 
-    public Envelope<T> withPriority(Priority newPriority) {
-        return new Envelope<>(message, sender, recipient, messageType, retryCount, newPriority);
+    public Envelope withPriority(Priority newPriority) {
+        return new Envelope(message, sender, recipient, messageType, retryCount, newPriority);
     }
 
     public boolean isSystemMessage() {
@@ -159,8 +166,7 @@ public class Envelope<T> {
 
     @Override
     public String toString() {
-        return String.format("Envelope[id=%s, message=%s, type=%s, retry=%d, priority=%s]",
-                messageId, message.getClass().getSimpleName(), messageType, retryCount, priority);
+        return String.format("Envelope[id=%s, message=%s, type=%s, retry=%d, priority=%s]", messageId, message.getClass().getSimpleName(), messageType, retryCount, priority);
     }
 }
 

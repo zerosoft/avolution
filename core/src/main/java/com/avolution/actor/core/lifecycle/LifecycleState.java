@@ -1,4 +1,4 @@
-package com.avolution.actor.lifecycle;
+package com.avolution.actor.core.lifecycle;
 
 /**
  * Actor的生命周期状态
@@ -27,9 +27,18 @@ public enum LifecycleState {
      * 正在停止状态
      */
     STOPPING,
-    
+
+    /**
+     * 暂停挂起状态
+     */
+    SUSPENDED,
     /**
      * 已停止状态
      */
-    STOPPED
+    STOPPED,
+
+    /**
+     * 已停止（失败）状态
+     */
+    FAILED
 }

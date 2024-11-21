@@ -7,10 +7,10 @@ import com.avolution.actor.dispatch.Dispatcher;
 import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.exception.ActorSystemCreationException;
 import com.avolution.actor.exception.SystemFailureException;
-import com.avolution.actor.lifecycle.LifecycleState;
+import com.avolution.actor.core.lifecycle.LifecycleState;
+import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalEnvelope;
-import com.avolution.actor.message.SignalPriority;
 import com.avolution.actor.message.SignalScope;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.core.context.ActorContext;
@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Actor系统的核心实现类，负责管理整个Actor生态系统
@@ -72,7 +73,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @see DeathWatch
  */
 public class ActorSystem {
-    private static final Logger log = LoggerFactory.getLogger(ActorSystem.class);
+    private static final Logger logger = LoggerFactory.getLogger(ActorSystem.class);
 
     private static final AtomicReference<ActorSystem> INSTANCE = new AtomicReference<>();
     private static final ConcurrentHashMap<String, ActorSystem> NAMED_SYSTEMS = new ConcurrentHashMap<>();
@@ -140,7 +141,7 @@ public class ActorSystem {
 
     private void start() {
         if (state.compareAndSet(SystemState.NEW, SystemState.RUNNING)) {
-            log.info("Actor system '{}' started", name);
+            logger.info("Actor system '{}' started", name);
         }
         // 创建系统Actor
         try {
@@ -174,9 +175,9 @@ public class ActorSystem {
                     "User Guardian"
             );
 
-            log.info("System actors initialized successfully");
+            logger.info("System actors initialized successfully");
         } catch (Exception e) {
-            log.error("Failed to initialize system actors", e);
+            logger.error("Failed to initialize system actors", e);
             throw new ActorSystemCreationException("System actors initialization failed", e);
         }
     }
@@ -216,16 +217,16 @@ public class ActorSystem {
             actor.setContext(context);
             // 设置自身引用
             actor.setSelfRef(actorRef);
-            // 初始化Actor
-            context.initializeActor();
+
+            context.start();
 
             // 注册系统Actor
             registerSystemActor(actorRef, context);
 
-            log.debug("Created system actor: {}", path);
+            logger.debug("Created system actor: {}", path);
             return actorRef;
         } catch (Exception e) {
-            log.error("Failed to create system actor at path: {}", path, e);
+            logger.error("Failed to create system actor at path: {}", path, e);
             throw new ActorSystemCreationException("Failed to create system actor", e);
         }
     }
@@ -252,7 +253,7 @@ public class ActorSystem {
         // 等待Actor进入RUNNING状态
         long deadline = System.currentTimeMillis() + 5000; // 5秒超时
         while (System.currentTimeMillis() < deadline) {
-            if (contextManager.getContext(ref.path()).get().getState().get() == LifecycleState.RUNNING) {
+            if (contextManager.getContext(ref.path()).get().getLifecycle().getState() == LifecycleState.RUNNING) {
                 return;
             }
             try {
@@ -306,16 +307,13 @@ public class ActorSystem {
             actor.setSelfRef(actorRef);
 
             context.start();
-            if (actorContextRef!=null){
-                actorContextRef.addChild(name,actor);
-            }
             // 注册Actor
             registerActor(actorRef, context);
 
-            log.debug("Created actor: {}", path);
+            logger.debug("Created actor: {}", path);
             return actorRef;
         } catch (Exception e) {
-            log.error("Failed to create actor: {}", name, e);
+            logger.error("Failed to create actor: {}", name, e);
             throw new ActorCreationException("Failed to create actor: " + name, e);
         }
     }
@@ -354,47 +352,55 @@ public class ActorSystem {
         }
     }
 
-    public CompletableFuture<Void> stop(ActorRef<?> actor) {
-        if (actor == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        if (state.get() != SystemState.RUNNING) {
-            return CompletableFuture.failedFuture(
-                    new IllegalStateException("Actor system is not running")
-            );
-        }
+    public CompletableFuture<Void> stop(ActorRef actor) {
 
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
-        try {
-            // 创建高优先级的停止信号
-            // 发送停止信号
-            actor.tell(Signal.KILL,ActorRef.noSender());
 
-            // 设置超时处理
-            return stopFuture.orTimeout(10, TimeUnit.SECONDS)
-                    .exceptionally(throwable -> {
-                        if (throwable instanceof TimeoutException) {
-                            log.warn("Timeout while stopping actor: {}, sending KILL signal", actor.path());
-                            // 发送 KILL 信号强制停止
-                            actor.tell(Signal.KILL,ActorRef.noSender());
+        SignalEnvelope signalEnvelope = SignalEnvelope.builder()
+                .signal(Signal.POISON_PILL)
+                .priority(Envelope.Priority.HIGH)
+                .scope(SignalScope.SINGLE)
+                .build();
+        signalEnvelope.addMetadata("stopFuture", stopFuture);
+        //通知关闭
+        actor.tell(signalEnvelope,ActorRef.noSender());
+
+        // 设置超时逻辑
+        return stopFuture.orTimeout(10, TimeUnit.SECONDS)
+                .handle((result, exception) -> {
+                    if (exception != null) {
+                        if (exception instanceof TimeoutException) {
+                            // 输出超时日志
+                            logger.warn("Actor {} failed to stop within the specified timeout of 10 seconds.", actor.path());
+                            SignalEnvelope kill = SignalEnvelope.builder()
+                                    .signal(Signal.KILL)
+                                    .priority(Envelope.Priority.HIGH)
+                                    .scope(SignalScope.SINGLE)
+                                    .build();
+                            //通知关闭
+                            actor.tell(kill, ActorRef.noSender());
                         } else {
-                            log.error("Error while stopping actor: {}", actor.path(), throwable);
+                            // 处理其他异常
+                            logger.error("An error occurred while stopping actor {}: ", actor.path(), exception.getMessage());
                         }
-                        return null;
-                    });
-
-        } catch (Exception e) {
-            log.error("Failed to initiate actor stop: {}", actor.path(), e);
-            stopFuture.completeExceptionally(e);
-            return stopFuture;
-        }
+                        // 如果发生异常，返回一个失败的Future
+                        CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+                        failedFuture.completeExceptionally(exception);
+                        return failedFuture;
+                    } else {
+                        // 如果成功停止，返回原来的Future
+                        return stopFuture;
+                    }
+                })
+                .thenCompose(Function.identity()); // 确保返回的Future是正确的
     }
+
+
 
     public CompletableFuture<Void> terminate() {
         if (state.compareAndSet(SystemState.RUNNING, SystemState.TERMINATING)) {
             try {
-                log.info("Terminating actor system '{}'...", name);
+                logger.info("Terminating actor system '{}'...", name);
 
                 // 1. 停止用户Actor
                 stopUserActors();
@@ -418,9 +424,9 @@ public class ActorSystem {
                 state.set(SystemState.TERMINATED);
                 terminationFuture.complete(null);
 
-                log.info("Actor system '{}' terminated", name);
+                logger.info("Actor system '{}' terminated", name);
             } catch (Exception e) {
-                log.error("Error during actor system termination", e);
+                logger.error("Error during actor system termination", e);
                 terminationFuture.completeExceptionally(e);
             }
         }
@@ -429,7 +435,7 @@ public class ActorSystem {
 
     public void handleSystemFailure(Throwable cause, ActorRef<?> failedActor) {
         try {
-            log.error("System level failure from actor: {}", failedActor.path(), cause);
+            logger.error("System level failure from actor: {}", failedActor.path(), cause);
 
             // 2. 通知死亡监视器
             deathWatch.signalTermination(failedActor, false);
@@ -442,75 +448,58 @@ public class ActorSystem {
                 stopActor(failedActor)
                         .orTimeout(5, TimeUnit.SECONDS)
                         .exceptionally(ex -> {
-                            log.error("Failed to stop actor after system failure: {}", failedActor.path(), ex);
+                            logger.error("Failed to stop actor after system failure: {}", failedActor.path(), ex);
                             return null;
                         });
             }
         } catch (Exception e) {
-            log.error("Error handling system failure", e);
+            logger.error("Error handling system failure", e);
         }
     }
 
-    private CompletableFuture<Void> stopActor(ActorRef<?> actor) {
+    private CompletableFuture<Void> stopActor(ActorRef actor) {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
-        try {
-            // 1. 获取Actor上下文
-            Optional<ActorContext> contextOptional = contextManager.getContext(actor.path());
-            if (contextOptional.isEmpty()) {
-                stopFuture.completeExceptionally(
-                        new IllegalStateException("Actor context not found: " + actor.path()));
-                return stopFuture;
-            }
 
-            ActorContext context=contextOptional.get();
-            // 2. 停止子Actor
-            CompletableFuture<Void> childrenStopFuture = stopChildren(context);
+        SignalEnvelope signalEnvelope = SignalEnvelope.builder()
+                .signal(Signal.POISON_PILL)
+                .priority(Envelope.Priority.HIGH)
+                .scope(SignalScope.SINGLE)
+                .build();
+        signalEnvelope.addMetadata("stopFuture", stopFuture);
+        //通知关闭
+        actor.tell(signalEnvelope,ActorRef.noSender());
 
-            // 3. 停止当前Actor
-            childrenStopFuture.thenRun(() -> {
-                try {
-                    // 执行停止流程
-                    context.stop()
-                            .thenRun(() -> {
-                                // 清理注册信息
-                                unregisterActor(actor.path());
-                                // 通知死亡监视器
-                                deathWatch.signalTermination(actor, true);
-                                stopFuture.complete(null);
-                            })
-                            .exceptionally(ex -> {
-                                stopFuture.completeExceptionally(ex);
-                                return null;
-                            });
-                } catch (Exception e) {
-                    stopFuture.completeExceptionally(e);
-                }
-            });
-
-        } catch (Exception e) {
-            stopFuture.completeExceptionally(e);
-        }
-        return stopFuture;
+        // 设置超时逻辑
+        return stopFuture.orTimeout(10, TimeUnit.SECONDS)
+                .handle((result, exception) -> {
+                    if (exception != null) {
+                        if (exception instanceof TimeoutException) {
+                            // 输出超时日志
+                            logger.warn("Actor {} failed to stop within the specified timeout of 10 seconds.", actor.path());
+                            SignalEnvelope kill = SignalEnvelope.builder()
+                                    .signal(Signal.KILL)
+                                    .priority(Envelope.Priority.HIGH)
+                                    .scope(SignalScope.SINGLE)
+                                    .build();
+                            //通知关闭
+                            actor.tell(kill,ActorRef.noSender());
+                        } else {
+                            // 处理其他异常
+                            logger.error("An error occurred while stopping actor {}: ", actor.path(), exception.getMessage());
+                        }
+                        // 如果发生异常，返回一个失败的Future
+                        CompletableFuture<Void> failedFuture = new CompletableFuture<>();
+                        failedFuture.completeExceptionally(exception);
+                        return failedFuture;
+                    } else {
+                        // 如果成功停止，返回原来的Future
+                        return stopFuture;
+                    }
+                })
+                .thenCompose(Function.identity()); // 确保返回的Future是正确的
     }
 
-    private CompletableFuture<Void> stopChildren(ActorContext context) {
-        List<CompletableFuture<Void>> childrenFutures = new ArrayList<>();
-
-        // 获取所有子Actor的引用
-        Map<String, ActorRef> children = context.getChildren();
-
-        // 停止每个子Actor
-        for (ActorRef child : children.values()) {
-            childrenFutures.add(stopActor(child));
-        }
-
-        // 等待所有子Actor停止完成
-        return CompletableFuture.allOf(
-                childrenFutures.toArray(new CompletableFuture[0])
-        );
-    }
-
-    private boolean isSystemFailure(Throwable cause) {
+    public boolean isSystemFailure(Throwable cause) {
         return cause instanceof SystemFailureException
                 || cause instanceof OutOfMemoryError
                 || cause instanceof StackOverflowError;
@@ -549,7 +538,7 @@ public class ActorSystem {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while shutting down internals", e);
+            logger.error("Interrupted while shutting down internals", e);
         }
     }
 
@@ -563,7 +552,7 @@ public class ActorSystem {
     }
 
     public void unregisterActor(String path) {
-        refRegistry.unregister(path,"");
+        refRegistry.unregisterActor(path);
         contextManager.removeContext(path);
     }
 
@@ -576,7 +565,7 @@ public class ActorSystem {
         return dispatcher;
     }
 
-    public DeathWatch deathWatch() {
+    public DeathWatch getDeathWatch() {
         return deathWatch;
     }
 

@@ -14,11 +14,23 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DeathWatch {
     private static final Logger log = LoggerFactory.getLogger(DeathWatch.class);
-
     private final ActorSystem system;
-    private final Map<ActorRef, Set<ActorRef>> watchedBy;  // 被谁监视
-    private final Map<ActorRef, Set<ActorRef>> watching;   // 监视谁
+
+    // 监视关系映射
+    private final Map<ActorRef<?>, Set<WatchRegistration>> watchedBy;  // 被谁监视
+    private final Map<ActorRef<?>, Set<WatchRegistration>> watching;   // 监视谁
     private final ReentrantReadWriteLock lock;
+
+    public record WatchRegistration(
+            ActorRef<?> watcher,
+            ActorRef<?> watched,
+            DeathWatchCallback callback
+    ) {}
+
+    @FunctionalInterface
+    public interface DeathWatchCallback {
+        void onTerminated(ActorRef<?> actor, boolean normal);
+    }
 
     public DeathWatch(ActorSystem system) {
         this.system = system;
@@ -27,96 +39,69 @@ public class DeathWatch {
         this.lock = new ReentrantReadWriteLock();
     }
 
-    public void watch(ActorRef watcher, ActorRef watched) {
+    public void watch(ActorRef<?> watcher, ActorRef<?> watched, DeathWatchCallback callback) {
         if (!isValidWatchRequest(watcher, watched)) {
             return;
         }
 
+        WatchRegistration registration = new WatchRegistration(watcher, watched, callback);
         lock.writeLock().lock();
         try {
+            watchedBy.computeIfAbsent(watched, k -> ConcurrentHashMap.newKeySet()).add(registration);
+            watching.computeIfAbsent(watcher, k -> ConcurrentHashMap.newKeySet()).add(registration);
+
+            // 如果目标已终止，立即触发回调
             if (watched.isTerminated()) {
-                notifyWatcher(watcher, createTerminatedSignal(watched, false));
-                return;
+                unwatch(watcher, watched);
+                callback.onTerminated(watched, true);
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    public void unwatch(ActorRef<?> watcher, ActorRef<?> watched) {
+        lock.writeLock().lock();
+        try {
+            Set<WatchRegistration> watcherRegs = watching.get(watcher);
+            Set<WatchRegistration> watchedRegs = watchedBy.get(watched);
+
+            if (watcherRegs != null) {
+                watcherRegs.removeIf(reg -> reg.watched().equals(watched));
+                if (watcherRegs.isEmpty()) {
+                    watching.remove(watcher);
+                }
             }
 
-            watchedBy.computeIfAbsent(watched, k -> ConcurrentHashMap.newKeySet()).add(watcher);
-            watching.computeIfAbsent(watcher, k -> ConcurrentHashMap.newKeySet()).add(watched);
-
-            log.debug("Actor {} now watching {}", watcher.path(), watched.path());
+            if (watchedRegs != null) {
+                watchedRegs.removeIf(reg -> reg.watcher().equals(watcher));
+                if (watchedRegs.isEmpty()) {
+                    watchedBy.remove(watched);
+                }
+            }
         } finally {
             lock.writeLock().unlock();
         }
     }
 
-    public void unwatch(ActorRef watcher, ActorRef watched) {
-        if (!isValidWatchRequest(watcher, watched)) {
-            return;
-        }
-
-        lock.writeLock().lock();
-        try {
-            watchedBy.getOrDefault(watched, Collections.emptySet()).remove(watcher);
-            watching.getOrDefault(watcher, Collections.emptySet()).remove(watched);
-
-            cleanupEmptySets(watched, watcher);
-            log.debug("Actor {} stopped watching {}", watcher.path(), watched.path());
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    public void signalTermination(ActorRef terminated, boolean isPlanned) {
-        lock.readLock().lock();
-        try {
-            Set<ActorRef> watchers = watchedBy.getOrDefault(terminated, Collections.emptySet());
-            Signal terminatedSignal = createTerminatedSignal(terminated, isPlanned);
-
-            watchers.forEach(watcher -> notifyWatcher(watcher, terminatedSignal));
-            cleanup(terminated);
-
-            log.debug("Notified {} watchers about termination of {}",
-                    watchers.size(), terminated.path());
-        } finally {
-            lock.readLock().unlock();
+    public void signalTermination(ActorRef<?> actor, boolean normal) {
+        Set<WatchRegistration> registrations = watchedBy.remove(actor);
+        if (registrations != null) {
+            registrations.forEach(reg -> {
+                try {
+                    reg.callback().onTerminated(actor, normal);
+                    watching.computeIfPresent(reg.watcher(), (k, v) -> {
+                        v.remove(reg);
+                        return v.isEmpty() ? null : v;
+                    });
+                } catch (Exception e) {
+                    log.error("Error executing death watch callback for {}", actor.path(), e);
+                }
+            });
         }
     }
 
-    private boolean isValidWatchRequest(ActorRef watcher, ActorRef watched) {
-        return watcher != null && watched != null && watcher != watched;
-    }
-
-    private Signal createTerminatedSignal(ActorRef terminated, boolean isPlanned) {
-        return Signal.STOP;
-    }
-
-    private void notifyWatcher(ActorRef watcher, Signal signal) {
-        try {
-            watcher.tell(signal, ActorRef.noSender());
-        } catch (Exception e) {
-            log.error("Failed to notify watcher {} about termination", watcher.path(), e);
-        }
-    }
-
-    private void cleanup(ActorRef actor) {
-        lock.writeLock().lock();
-        try {
-            watchedBy.remove(actor);
-            watching.remove(actor);
-
-            // 清理所有对该actor的引用
-            watchedBy.values().forEach(set -> set.remove(actor));
-            watching.values().forEach(set -> set.remove(actor));
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    private void cleanupEmptySets(ActorRef watched, ActorRef watcher) {
-        if (watchedBy.get(watched) != null && watchedBy.get(watched).isEmpty()) {
-            watchedBy.remove(watched);
-        }
-        if (watching.get(watcher) != null && watching.get(watcher).isEmpty()) {
-            watching.remove(watcher);
-        }
+    private boolean isValidWatchRequest(ActorRef<?> watcher, ActorRef<?> watched) {
+        return watcher != null && watched != null && !watcher.equals(watched);
     }
 }

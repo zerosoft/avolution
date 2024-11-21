@@ -41,7 +41,6 @@ public class DeadLetterActor extends AbstractActor<IDeadLetterActorMessage> {
             handleSpecificDeadLetter(deadLetter);
         } catch (Exception e) {
             log.error("Error processing dead letter: {}", deadLetter, e);
-            metricsCollector.incrementFailureCount();
         }
     }
 
@@ -118,18 +117,6 @@ public class DeadLetterActor extends AbstractActor<IDeadLetterActorMessage> {
             log.warn("Message retry failed after {} attempts for actor: {}",
                     deadLetter.retryCount(), deadLetter.recipient());
         }
-    }
-
-    @Override
-    public void preStart() {
-        log.info("DeadLetterActor started at: {}", path());
-    }
-
-    @Override
-    public void onPostStop() {
-        log.info("DeadLetterActor stopped. Total dead letters processed: {}",
-                totalDeadLetters.get());
-        cleanup();
     }
 
     private void cleanup() {

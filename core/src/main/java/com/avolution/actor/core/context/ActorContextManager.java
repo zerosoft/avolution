@@ -132,7 +132,7 @@ public class ActorContextManager {
         // 清理当前节点的上下文
         if (node.context != null) {
             // 停止 Actor
-            node.context.stop();
+            node.context.stopSelf();
             // 从映射中移除
             pathToContext.remove(nodePath);
             // 清空节点上下文

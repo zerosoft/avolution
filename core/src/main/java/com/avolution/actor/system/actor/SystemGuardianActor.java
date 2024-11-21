@@ -25,32 +25,22 @@ public class SystemGuardianActor extends AbstractActor<SystemGuardianActorMessag
 
     private void startActor(Class actorClass, String name) {
         // 创建并启动新的Actor
-        ActorRef actorRef = context.system().actorOf(Props.create(actorClass), name);
+        ActorRef actorRef = context.getActorSystem().actorOf(Props.create(actorClass), name);
         System.out.println("Started actor: " + name);
     }
 
     private void stopActor(ActorRef<?> actorRef) {
         // 停止指定的Actor
-        context.stop(actorRef);
+//        context.stopSelf(actorRef);
         System.out.println("Stopped actor: " + actorRef.path());
     }
 
     private void restartActor(ActorRef<?> actorRef) {
         // 重启指定的Actor
-        context.stop(actorRef);
+//        context.stopSelf(actorRef);
         // 这里可以添加逻辑来重新创建Actor
         System.out.println("Restarted actor: " + actorRef.path());
     }
 
-    @Override
-    public void onPreRestart(Throwable reason) {
-        // 在重启之前的处理逻辑
-        System.out.println("SystemGuardianActor is restarting due to: " + reason.getMessage());
-    }
 
-    @Override
-    public void onPostRestart(Throwable reason) {
-        // 在重启之后的处理逻辑
-        System.out.println("SystemGuardianActor has restarted.");
-    }
 }

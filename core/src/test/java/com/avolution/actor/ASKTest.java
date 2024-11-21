@@ -92,7 +92,7 @@ class ASKTest {
     public static class EchoActor extends AbstractActor<Message> {
         @OnReceive(Message.class)
         public void onMessage(Message msg) {
-            getSender().tell(msg.getContent(), getSelf());
+            getSender().tell(msg.getContent(), getSelfRef());
         }
     }
 
@@ -102,7 +102,7 @@ class ASKTest {
         public void onMessage(Message msg) {
             try {
                 Thread.sleep(500);
-                getSender().tell(msg.getContent(), getSelf());
+                getSender().tell(msg.getContent(), getSelfRef());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -116,7 +116,7 @@ class ASKTest {
             if ("trigger-error".equals(msg.getContent())) {
                 throw new RuntimeException("Test error");
             }
-            getSender().tell(msg.getContent(), getSelf());
+            getSender().tell(msg.getContent(), getSelfRef());
         }
     }
 }

@@ -1,10 +1,12 @@
 package com.avolution.actor.core;
 
 import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,9 +29,19 @@ public class ActorStopTest {
         Props<String> props = Props.create(TestActor.class);
         ActorRef<String> actor = system.actorOf(props, "test-actor");
 
+        // 创建一个简单的测试Actor
+        props = Props.create(TestActor.class);
+        ActorRef<String> actor_wait = system.actorOf(props, "test-actor-wait");
+
         // 发送一些消息
         actor.tell("message1", ActorRef.noSender());
         actor.tell("message2", ActorRef.noSender());
+        try {
+            Thread.sleep(100); // 增加等待时间
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
 
         // 停止Actor
         CompletableFuture<Void> stopFuture = system.stop(actor);
@@ -51,9 +63,20 @@ public class ActorStopTest {
         Props<Object> parentProps = Props.create(ParentActor.class);
         ActorRef<Object> parent = system.actorOf(parentProps, "parent");
 
-        // 创建子Actor
-        parent.tell(new CreateChild("child1"), ActorRef.noSender());
-        parent.tell(new CreateChild("child2"), ActorRef.noSender());
+
+        try {
+            ActorRef<Object> ask = ASK.ask(parent, new CreateChild("child1"), Duration.ofSeconds(1));
+            ActorRef<Object> ask1 = ASK.ask(parent, new CreateChild("child2"), Duration.ofSeconds(1));
+
+            ask.tell(new CreateChild("child11"), parent);
+            ask.tell(new CreateChild("child12"), parent);
+
+            ask1.tell(new CreateChild("child121"), parent);
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
 
         // 等待子Actor创建完成
         try {
@@ -71,6 +94,8 @@ public class ActorStopTest {
             // 验证清理
 //            assertFalse(system.hasActor(parent.path()));
             assertTrue(parent.isTerminated());
+
+            Thread.sleep(200); // 增加等待时间
 
         } catch (Exception e) {
             logger.error("Test failed", e);
@@ -122,10 +147,7 @@ public class ActorStopTest {
             }
         }
 
-        @Override
-        protected void onPostStop() {
-            logger.info("Actor stopped"+name());
-        }
+
     }
 
     private static class ParentActor extends AbstractActor<Object> {
@@ -135,9 +157,9 @@ public class ActorStopTest {
         public void onReceive(Object message) {
             if (message instanceof CreateChild) {
                 CreateChild createChild = (CreateChild) message;
-                Props<String> childProps = Props.create(TestActor.class);
-                ActorRef<String> stringActorRef = getContext().actorOf(childProps, createChild.name);
-
+                Props<Object> childProps = Props.create(ParentActor.class);
+                ActorRef<Object> stringActorRef = getContext().actorOf(childProps, createChild.name);
+                getSender().tell(stringActorRef,getSelfRef());
             }
         }
 

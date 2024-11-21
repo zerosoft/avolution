@@ -1,15 +1,20 @@
 package com.avolution.actor.core.context;
 
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.message.Signal;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorSystem;
+import com.avolution.actor.message.Signal;
 
 public class ActorRefRegistry {
     private static final Logger logger = LoggerFactory.getLogger(ActorRefRegistry.class);
@@ -22,6 +27,7 @@ public class ActorRefRegistry {
     private final Map<String, Set<String>> parentToChildren = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> watcherToWatched = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> watchedToWatcher = new ConcurrentHashMap<>();
+    private final Map<String, Set<Runnable>> terminationCallbacks = new ConcurrentHashMap<>();
 
     public ActorRefRegistry(ActorSystem system) {
         this.system = system;
@@ -56,7 +62,7 @@ public class ActorRefRegistry {
         }
     }
 
-    public void unregister(String path, String reason) {
+    public void unregisterActor(String path) {
         if (path == null) return;
 
         lock.writeLock().lock();
@@ -72,17 +78,20 @@ public class ActorRefRegistry {
             Set<String> children = parentToChildren.get(path);
             if (children != null) {
                 new HashSet<>(children).forEach(childPath ->
-                        unregister(childPath, "Parent actor stopping: " + path));
+                        unregisterActor(childPath));
                 parentToChildren.remove(path);
             }
 
             // 通知监视者
-            notifyWatchers(path, reason);
+            notifyWatchers(path);
 
-            // 清理所有相关索引
+            // 执行终止回调
+            executeTerminationCallbacks(path);
+
+            // 清理所有引用
             cleanupReferences(path);
 
-            logger.debug("Unregistered ActorRef: {}, reason: {}", path, reason);
+            logger.debug("Unregistered ActorRef: {}", path);
         } finally {
             lock.writeLock().unlock();
         }
@@ -137,13 +146,36 @@ public class ActorRefRegistry {
         }
     }
 
-    private void notifyWatchers(String path, String reason) {
+    private void notifyWatchers(String path) {
         Set<String> watchers = watchedToWatcher.get(path);
         if (watchers != null) {
             watchers.forEach(watcherPath -> {
                 ActorRef<?> watcher = pathToRef.get(watcherPath);
                 if (watcher != null) {
                     watcher.tell(Signal.TERMINATED, ActorRef.noSender());
+                }
+            });
+        }
+    }
+
+    public void addTerminationCallback(String path, Runnable callback) {
+        lock.writeLock().lock();
+        try {
+            terminationCallbacks.computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet())
+                    .add(callback);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    private void executeTerminationCallbacks(String path) {
+        Set<Runnable> callbacks = terminationCallbacks.remove(path);
+        if (callbacks != null) {
+            callbacks.forEach(callback -> {
+                try {
+                    callback.run();
+                } catch (Exception e) {
+                    logger.error("Error executing termination callback for actor: {}", path, e);
                 }
             });
         }

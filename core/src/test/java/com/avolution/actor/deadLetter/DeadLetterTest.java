@@ -36,11 +36,6 @@ public class DeadLetterTest {
         private final AtomicInteger deadLetterCount = new AtomicInteger(0);
         private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
 
-        @Override
-        public void preStart() {
-//            context.watch(context.system().getDeadLetters());
-        }
-
         @OnReceive(Object.class)
         private void onMessage(Object msg) {
                 terminatedReceived.set(true);

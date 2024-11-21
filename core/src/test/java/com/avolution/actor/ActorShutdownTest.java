@@ -9,11 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 public class ActorShutdownTest {
 
@@ -57,14 +54,9 @@ public class ActorShutdownTest {
         @OnReceive(CreateChildMessage.class)
         private void onCreateChild(CreateChildMessage msg) {
             ActorRef<ShutdownTestActor.Message> child = context.actorOf(Props.create(ShutdownTestActor.class),"Child");
-            getSender().tell(child, getSelf());
+            getSender().tell(child, getSelfRef());
         }
 
-        @Override
-        public void onPostStop() {
-            System.out.println(path()+"Actor stopped");
-            postStopCalled.set(true);
-        }
 
         public boolean wasPostStopCalled() {
             return postStopCalled.get();

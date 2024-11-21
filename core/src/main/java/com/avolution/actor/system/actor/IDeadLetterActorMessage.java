@@ -15,7 +15,7 @@ public interface IDeadLetterActorMessage {
     /**
      * 将普通消息转换为死信
      */
-    default DeadLetter messageToDeadLetter(Envelope<?> envelope) {
+  static DeadLetter messageToDeadLetter(Envelope envelope) {
         return new DeadLetter(
                 envelope.getMessage(),
                 envelope.getSender().path(),

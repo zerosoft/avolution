@@ -1,6 +1,5 @@
 package com.avolution.actor.message;
 
-import com.avolution.actor.core.ActorRef;
 
 /**
  * Actor系统信号枚举
@@ -27,7 +26,7 @@ public enum Signal {
     /**
      * 终止信号：表示Actor已经完全停止
      */
-    TERMINATED(SignalType.CONTROL),
+    TERMINATED(SignalType.LIFECYCLE),
     
     /**
      * 暂停信号：暂时停止处理新消息
@@ -43,6 +42,10 @@ public enum Signal {
      * 毒丸信号：请求Actor在处理完当前消息后停止
      */
     POISON_PILL(SignalType.CONTROL),
+    /**
+     * 子Actor终止信号：子Actor已经停止
+     */
+    CHILD_TERMINATED(SignalType.SUPERVISION),
     
     /**
      * 强制终止信号：立即停止Actor，不等待消息处理完成
@@ -117,19 +120,5 @@ public enum Signal {
         return type == SignalType.QUERY;
     }
 
-    /**
-     * 创建默认信号包装
-     */
-    public SignalEnvelope envelope(ActorRef<?> sender, ActorRef<Signal> recipient) {
-        return new SignalEnvelope(this, sender, recipient);
-    }
-
-    /**
-     * 创建带作用域的信号包装
-     */
-    public SignalEnvelope envelope(ActorRef<?> sender, ActorRef<Signal> recipient,
-                                 SignalScope scope) {
-        return new SignalEnvelope(this, sender, recipient, SignalPriority.NORMAL, scope);
-    }
 }
 

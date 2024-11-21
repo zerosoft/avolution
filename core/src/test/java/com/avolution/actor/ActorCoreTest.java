@@ -150,16 +150,6 @@ class ActorCoreTest {
         private final AtomicBoolean preStartCalled = new AtomicBoolean(false);
         private final AtomicBoolean postStopCalled = new AtomicBoolean(false);
 
-        @Override
-        public void preStart() {
-            preStartCalled.set(true);
-        }
-
-        @Override
-        public void onPostStop() {
-            postStopCalled.set(true);
-        }
-
         boolean wasPreStartCalled() { return preStartCalled.get(); }
         boolean wasPostStopCalled() { return postStopCalled.get(); }
     }
@@ -177,10 +167,6 @@ class ActorCoreTest {
             }
         }
 
-        @Override
-        public void onPostStop() {
-            childrenTerminated.set(true);
-        }
 
         int getChildCount() { return childCount.get(); }
         boolean areChildrenTerminated() { return childrenTerminated.get(); }

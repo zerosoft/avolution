@@ -24,7 +24,7 @@ public final class AskPattern {
             Function<ActorRef<R>, T> messageFactory) {
 
         CompletableFuture<R> future = new CompletableFuture<>();
-        ActorSystem system = target.getContext().system();
+        ActorSystem system = target.getContext().getActorSystem();
 
         // 创建临时响应Actor
         Props<R> replyProps = Props.create(() -> new AbstractActor<R>() {
@@ -51,15 +51,6 @@ public final class AskPattern {
             }
 
 
-            @Override
-            public void onPostStop() {
-                timeoutTask.cancel(true);
-                if (!future.isDone()) {
-                    future.completeExceptionally(
-                            new AskTimeoutException("Actor stopped before receiving response")
-                    );
-                }
-            }
         });
 
         // 创建临时Actor并发送消息

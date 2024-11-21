@@ -15,7 +15,7 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
     @OnReceive(HelloActorMessage.World.class)
     public void handleWorldMessage(HelloActorMessage.World message) {
         System.out.println("World, Actor! " + message);
-        getSender().tell("OK",getSelf());
+        getSender().tell("OK", getSelfRef());
 
         getContext().getScheduler().schedule(()->{
             System.out.println("Hello, Actor! timer  " + message);
@@ -34,7 +34,7 @@ public class HelloActor extends AbstractActor<HelloActorMessage> {
     @OnReceive(HelloActorMessage.Terminate.class)
     public void handleStopMessage(HelloActorMessage.Terminate message) {
         System.out.println("Stop, Actor! " + message);
-        getContext().stop(getSelf());
+//        getContext().stopSelf(getSelfRef());
     }
 
 

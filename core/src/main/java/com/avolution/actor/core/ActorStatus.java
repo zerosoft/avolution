@@ -1,6 +1,6 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.lifecycle.LifecycleState;
+import com.avolution.actor.core.lifecycle.LifecycleState;
 
 public record ActorStatus(
         String actorPath,

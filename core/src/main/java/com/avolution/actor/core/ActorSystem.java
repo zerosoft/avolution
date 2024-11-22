@@ -12,6 +12,7 @@ import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.message.SignalScope;
+import com.avolution.actor.stream.EventStream;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.system.actor.*;
@@ -82,6 +83,8 @@ public class ActorSystem {
     // 系统组件
     private final ActorRefRegistry refRegistry;
     private final ActorContextManager contextManager;
+    private final EventStream eventStream;
+
     // 系统服务
     private final Dispatcher dispatcher;
     private final DeathWatch deathWatch;
@@ -136,6 +139,7 @@ public class ActorSystem {
         this.terminationFuture = new CompletableFuture<>();
         this.contextManager = new ActorContextManager();
         this.refRegistry=new ActorRefRegistry(this);
+        this.eventStream = new EventStream(this);
         start();
     }
 
@@ -232,20 +236,18 @@ public class ActorSystem {
     }
 
 
-    private String generateActorPath(String name, ActorContext parentContext) {
-        String basePath = (parentContext != null) ?
-                parentContext.getPath() : "/user";
-        return basePath + "/" + name + "#" + generateUniqueId(name);
-    }
-
     private void registerSystemActor(ActorRef<?> ref, ActorContext context) {
-//        refRegistry.registerSystem(ref);
+        // 同时注册到RefRegistry和ContextManager
+        refRegistry.register(ref, "/system");
         contextManager.addContext(ref.path(), context);
+        logger.debug("Registered system actor: {}", ref.path());
     }
 
     private void registerUserActor(ActorRef<?> ref, ActorContext context) {
-//        refRegistry.registerUser(ref, context.getParent() == null ? "/user" : context.getParent().getPath());
+        String parentPath = context.getParent() == null ? "/user" : context.getParent().getPath();
+        refRegistry.register(ref, parentPath);
         contextManager.addContext(ref.path(), context);
+        logger.debug("Registered user actor: {}", ref.path());
     }
 
 
@@ -552,8 +554,9 @@ public class ActorSystem {
     }
 
     public void unregisterActor(String path) {
-        refRegistry.unregisterActor(path);
+        refRegistry.unregister(path);
         contextManager.removeContext(path);
+        logger.debug("Unregistered actor: {}", path);
     }
 
     // Getters
@@ -583,5 +586,9 @@ public class ActorSystem {
 
     public ActorRefRegistry getRefRegistry() {
         return refRegistry;
+    }
+
+    public EventStream getEventStream() {
+        return eventStream;
     }
 }

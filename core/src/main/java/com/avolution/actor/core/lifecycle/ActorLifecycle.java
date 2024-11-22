@@ -1,19 +1,20 @@
 package com.avolution.actor.core.lifecycle;
 
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.exception.ActorInitializationException;
+import java.util.concurrent.CompletableFuture;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.CompletableFuture;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.exception.ActorInitializationException;
 
 public class ActorLifecycle {
     private static final Logger logger = LoggerFactory.getLogger(ActorLifecycle.class);
 
     private volatile LifecycleState state = LifecycleState.NEW;
-
+    // 终止Future
     private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
-
+    // Actor上下文
     private final ActorContext context;
 
     public ActorLifecycle(ActorContext context) {
@@ -97,7 +98,9 @@ public class ActorLifecycle {
         }
     }
 
-
+    /**
+     * 清理资源
+     */
     private void cleanupResources() {
         try {
             context.getMailbox().clear();

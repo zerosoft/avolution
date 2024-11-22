@@ -1,13 +1,6 @@
 package com.avolution.actor.core;
 
 
-import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.exception.ActorInitializationException;
-import com.avolution.actor.message.*;
-import com.avolution.actor.pattern.AskPattern;
-import org.slf4j.Logger;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -15,6 +8,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+
+import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.exception.ActorInitializationException;
+import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.SignalEnvelope;
+import com.avolution.actor.pattern.AskPattern;
 
 
 /**
@@ -30,15 +34,18 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
     protected ActorContext context;
 
     // 持有唯一的ActorRefProxy引用
-    private LocalActorRef<T> selfRef;
+    private LocalActorRef<T> selfRef;  
 
+    // 消息发送者
     private ActorRef sender=ActorRef.noSender();
     /**
      * 消息处理器
      */
     private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
 
-
+    /**
+     * 注册消息处理器
+     */
     private void registerHandlers() {
         for (Method method : this.getClass().getDeclaredMethods()) {
             if (method.isAnnotationPresent(OnReceive.class)) {
@@ -50,7 +57,11 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
             }
         }
     }
-
+    /**
+     * 调用消息处理器
+     * @param method 方法
+     * @param message 消息
+     */
     private void invokeHandler(Method method, Object message) {
         try {
             method.invoke(this, message);
@@ -62,7 +73,9 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
         }
     }
 
-
+    /**
+     * 初始化Actor
+     */
     public void initialize() {
         try {
             // 1. 注册消息处理器

@@ -21,7 +21,8 @@ public class ActorContext  {
     private static final Logger logger = LoggerFactory.getLogger(ActorContext.class);
 
     private final String path;                    // Actor路径
-    private final ActorSystem system;             // Actor系统引用
+    private final ActorSystem system;
+    // Actor系统引用
     private final AbstractActor self;          // Actor实例
 
     private final ActorContext parent;            // 父Actor上下文
@@ -240,6 +241,11 @@ public class ActorContext  {
         }
     }
 
+    /**
+     * 停止Actor (自己或者子类 )
+     * @param actor
+     * @return
+     */
     public CompletableFuture<Void> stop(ActorRef actor) {
         logger.info("Stopping actor: {}", actor.path());
 
@@ -320,15 +326,15 @@ public class ActorContext  {
                 }
             }
 
-            // 4. 注册终止回调
-            system.getRefRegistry().addTerminationCallback(self.path(), () -> {
-                try {
-                    cleanup();
-                    logger.info("Actor {} stopped successfully", self.path());
-                } catch (Exception e) {
-                    logger.error("Failed to cleanup actor: {}", self.path(), e);
-                }
-            });
+//            // 4. 注册终止回调
+//            system.getRefRegistry().addTerminationCallback(self.path(), () -> {
+//                try {
+//                    cleanup();
+//                    logger.info("Actor {} stopped successfully", self.path());
+//                } catch (Exception e) {
+//                    logger.error("Failed to cleanup actor: {}", self.path(), e);
+//                }
+//            });
             logger.info("Actor {} stopped successfully", self.path());
         } catch (Exception e) {
             logger.error("Failed to stop actor: {}", self.path(), e);

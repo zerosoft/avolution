@@ -135,6 +135,30 @@ public class ActorStopTest {
         system.terminate();
     }
 
+    @Test
+    public void testActorSystemStop() {
+        ActorSystem system = ActorSystem.create("test-system");
+
+        // 创建一个简单的测试Actor
+        Props<String> props = Props.create(TestActor.class);
+        ActorRef<String> actor = system.actorOf(props, "test-actor");
+
+        // 创建一个简单的测试Actor
+        props = Props.create(TestActor.class);
+        ActorRef<String> actor_wait = system.actorOf(props, "test-actor-wait");
+
+        // 验证Actor已停止
+        actor.tell("message3", ActorRef.noSender());
+
+        system.terminate();
+
+        try {
+            Thread.sleep(200); // 增加等待时间
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     // 测试用的Actor类
     private static class TestActor extends AbstractActor<String> {
         @Override
@@ -146,8 +170,6 @@ public class ActorStopTest {
                 Thread.currentThread().interrupt();
             }
         }
-
-
     }
 
     private static class ParentActor extends AbstractActor<Object> {

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
+import com.avolution.actor.pattern.ASK;
 import org.slf4j.Logger;
 
 import com.avolution.actor.core.annotation.OnReceive;
@@ -18,7 +19,6 @@ import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalEnvelope;
-import com.avolution.actor.pattern.AskPattern;
 
 
 /**
@@ -135,7 +135,11 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
     public ActorContext getContext() {
         return context;
     }
-
+    /**
+     * 发送消息
+     * @param message 消息
+     * @param sender 发送者
+     */
     @Override
     public void tell(T message, ActorRef sender) {
         if (message == null) {
@@ -151,7 +155,11 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
 
         }
     }
-
+    /**
+     * 发送信号
+     * @param signal 信号
+     * @param sender 发送者
+     */
     @Override
     public void tell(Signal signal, ActorRef sender) {
         if (signal == null) {
@@ -163,13 +171,22 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
         }
     }
 
-
+    /**
+     * 发送消息
+     * @param envelope 消息
+     */
     public void tell(SignalEnvelope envelope) {
         if (!isTerminated()) {
             context.tell(envelope);
         }
     }
 
+    /**
+     * 创建信号消息
+     * @param signal 信号
+     * @param sender 发送者
+     * @return
+     */ 
     private SignalEnvelope createSignalEnvelope(Signal signal, ActorRef sender) {
         return SignalEnvelope.builder()
                 .signal(signal)
@@ -195,15 +212,25 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
         return context.getLifecycle().isTerminated();
     }
 
-
+    /**
+     * 发送请求消息
+     * @param message 消息
+     * @param timeout 超时时间
+     * @return
+     */
     public <R> CompletableFuture<R> ask(T message, Duration timeout) {
-        return AskPattern.ask(
+        return ASK.ask(
                 this,
                 timeout,
                 replyTo -> message
         );
     }
 
+    /**
+     * 发送请求消息
+     * @param message 消息
+     * @return
+     */
     public <R> CompletableFuture<R> ask(T message) {
         return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
     }

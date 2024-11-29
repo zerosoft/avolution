@@ -1,17 +1,19 @@
 package com.avolution.actor.supervision;
 
-import com.avolution.actor.message.SignalType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.message.MessageType;
-import com.avolution.actor.message.Signal;
-
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorSystem;
+
+/**
+ * 死亡监视
+ */
 public class DeathWatch {
     private static final Logger log = LoggerFactory.getLogger(DeathWatch.class);
     private final ActorSystem system;
@@ -39,6 +41,12 @@ public class DeathWatch {
         this.lock = new ReentrantReadWriteLock();
     }
 
+    /**
+     * 监视
+     * @param watcher 监视者
+     * @param watched 被监视者
+     * @param callback 回调
+     */
     public void watch(ActorRef<?> watcher, ActorRef<?> watched, DeathWatchCallback callback) {
         if (!isValidWatchRequest(watcher, watched)) {
             return;
@@ -59,7 +67,11 @@ public class DeathWatch {
             lock.writeLock().unlock();
         }
     }
-
+    /**
+     * 取消监视
+     * @param watcher 监视者
+     * @param watched 被监视者
+     */
     public void unwatch(ActorRef<?> watcher, ActorRef<?> watched) {
         lock.writeLock().lock();
         try {
@@ -84,6 +96,11 @@ public class DeathWatch {
         }
     }
 
+    /**
+     * 发送终止信号
+     * @param actor 被终止者
+     * @param normal 是否正常终止
+     */
     public void signalTermination(ActorRef<?> actor, boolean normal) {
         Set<WatchRegistration> registrations = watchedBy.remove(actor);
         if (registrations != null) {
@@ -101,6 +118,12 @@ public class DeathWatch {
         }
     }
 
+    /**
+     * 是否有效的监视请求
+     * @param watcher 监视者
+     * @param watched 被监视者
+     * @return
+     */
     private boolean isValidWatchRequest(ActorRef<?> watcher, ActorRef<?> watched) {
         return watcher != null && watched != null && !watcher.equals(watched);
     }

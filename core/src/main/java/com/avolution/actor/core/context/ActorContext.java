@@ -44,8 +44,7 @@ public class ActorContext  {
      * @param parent 父Actor上下文
      * @param props Actor属性配置
      */
-    public ActorContext(String path, ActorSystem system, AbstractActor<?> self,
-                        ActorContext parent, Props props) {
+    public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorContext parent, Props props) {
         this.path = path;
         this.system = system;
         this.self = self;
@@ -87,13 +86,16 @@ public class ActorContext  {
         }
 
         try {
+            // 处理邮箱中的消息
             while (!mailbox.isSuspended() || mailbox.hasHighPrioritySignals()) {
+                // 从邮箱中获取消息
                 Envelope message = mailbox.poll();
                 if (message == null) {
                     break;
                 }
 
                 try {
+                    // 设置消息发送者
                     self.setSender(message.getSender());
                     processMessage(message);
                 } catch (Exception e) {
@@ -153,6 +155,9 @@ public class ActorContext  {
         lifecycle.start();
     }
 
+    /**
+     * 恢复Actor
+     */
     public void resume() {
         lifecycle.resume();
     }
@@ -247,100 +252,43 @@ public class ActorContext  {
      * @return
      */
     public CompletableFuture<Void> stop(ActorRef actor) {
-        logger.info("Stopping actor: {}", actor.path());
-
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
-        //不是自己或者不是自己创建的Actor
-        ActorPath actorPath = ActorPath.fromString(actor.path());
-        if (!children.containsKey(actorPath.getName()) && !actorPath.isSamePath(getSelf().path())) {
-            logger.info("Actor {} is not a child of actor {}", actor.path(), getSelf().path());
-            stopFuture.complete(null);
-            return stopFuture;
+        // 直接调用生命周期管理
+        if (actor.path().equals(getSelf().path())) {
+            return lifecycle.stop(stopFuture);
         }
 
-        SignalEnvelope signalEnvelope = SignalEnvelope.builder()
-                .signal(Signal.POISON_PILL)
-                .priority(Envelope.Priority.HIGH)
-                .scope(SignalScope.SINGLE)
-                .build();
-        signalEnvelope.addMetadata("stopFuture", stopFuture);
-        //通知关闭
-        actor.tell(signalEnvelope, getSelf().getSelfRef());
+        // 子Actor停止逻辑
+        if (children.containsKey(actor.name())) {
+            SignalEnvelope signal = SignalEnvelope.builder()
+                    .signal(Signal.POISON_PILL)
+                    .priority(Envelope.Priority.HIGH)
+                    .scope(SignalScope.SINGLE)
+                    .build();
+            signal.addMetadata("stopFuture", stopFuture);
+            actor.tell(signal, getSelf().getSelfRef());
 
-        logger.info("Actor {} stopped successfully", actor.path());
-        // 设置超时逻辑
-        return stopFuture.orTimeout(10, TimeUnit.SECONDS)
-                .handle((result, exception) -> {
-                    if (exception != null) {
-                        if (exception instanceof TimeoutException) {
-                            // 输出超时日志
-                            logger.warn("Actor {} failed to stop within the specified timeout of 10 seconds.", actor.path());
-                            SignalEnvelope kill = SignalEnvelope.builder()
-                                    .signal(Signal.KILL)
-                                    .priority(Envelope.Priority.HIGH)
-                                    .scope(SignalScope.SINGLE)
-                                    .build();
-                            //通知关闭
-                            actor.tell(kill, getSelf().getSelfRef());
-                        } else {
-                            // 处理其他异常
-                            logger.error("An error occurred while stopping actor {}: ", actor.path(), exception.getMessage());
-                        }
-                        // 如果发生异常，返回一个失败的Future
-                        CompletableFuture<Void> failedFuture = new CompletableFuture<>();
-                        failedFuture.completeExceptionally(exception);
-                        return failedFuture;
-                    } else {
-                        // 如果成功停止，返回原来的Future
-                        return stopFuture;
-                    }
-                })
-                .thenCompose(Function.identity()); // 确保返回的Future是正确的
+            return stopFuture.orTimeout(10, TimeUnit.SECONDS)
+                    .exceptionally(e -> {
+                        handleStopTimeout(actor, e);
+                        return null;
+                    });
+        }
+
+        stopFuture.complete(null);
+        return stopFuture;
     }
 
-
-    public void stopSelf() {
-        try {
-            logger.info("Stopping actor: {}", self.path());
-            // 1. 暂停消息处理
-            lifecycle.suspend();
-
-            // 2. 停止所有子Actor并等待
-            if (!children.isEmpty()) {
-                List<CompletableFuture<Void>> childStopFutures = children
-                        .values()
-                        .stream()
-                        .map(child -> stop(child))
-                        .collect(Collectors.toList());
-
-                try {
-                    // 等待所有子Actor关闭，设置1秒超时
-                    CompletableFuture.allOf(childStopFutures.toArray(new CompletableFuture[0])).get(1, TimeUnit.SECONDS);
-                } catch (TimeoutException e) {
-                    logger.warn("Timeout waiting for child actors to stop, forcing termination");
-                    children.values().forEach(child -> child.tell(Signal.KILL, self.getSelfRef())
-                    );
-                } catch (Exception e) {
-                    logger.error("Error stopping child actors", e);
-                }
-            }
-
-//            // 4. 注册终止回调
-//            system.getRefRegistry().addTerminationCallback(self.path(), () -> {
-//                try {
-//                    cleanup();
-//                    logger.info("Actor {} stopped successfully", self.path());
-//                } catch (Exception e) {
-//                    logger.error("Failed to cleanup actor: {}", self.path(), e);
-//                }
-//            });
-            logger.info("Actor {} stopped successfully", self.path());
-        } catch (Exception e) {
-            logger.error("Failed to stop actor: {}", self.path(), e);
-
+    private void handleStopTimeout(ActorRef actor, Throwable e) {
+        if (e instanceof TimeoutException) {
+            logger.warn("Actor stop timeout: {}", actor.path());
+            SignalEnvelope kill = SignalEnvelope.builder()
+                    .signal(Signal.KILL)
+                    .priority(Envelope.Priority.HIGH)
+                    .scope(SignalScope.SINGLE)
+                    .build();
+            actor.tell(kill, getSelf().getSelfRef());
         }
     }
-
-
 }

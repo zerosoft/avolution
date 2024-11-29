@@ -2,6 +2,7 @@ package com.avolution.actor.system.actor;
 
 import com.avolution.actor.core.AbstractActor;
 import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
 import com.avolution.actor.core.annotation.OnReceive;
 import com.avolution.actor.message.Signal;
@@ -43,6 +44,12 @@ import java.util.Set;
 public class SystemGuardianActor extends AbstractActor<SystemGuardianActorMessage> {
 
     private Logger logger= LoggerFactory.getLogger(SystemGuardianActor.class);
+
+    private final ActorSystem actorSystem;
+
+    public SystemGuardianActor(ActorSystem actorSystem) {
+        this.actorSystem = actorSystem;
+    }
 
     @OnReceive(SystemGuardianActorMessage.StartActorMessage.class)
     private void handleStartActor(SystemGuardianActorMessage.StartActorMessage message) {

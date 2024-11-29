@@ -1,6 +1,7 @@
 package com.avolution.actor.system.actor;
 
 import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.annotation.OnReceive;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.metrics.ActorMetricsCollector;
@@ -24,7 +25,10 @@ public class DeadLetterActor extends AbstractActor<IDeadLetterActorMessage> {
     private final AtomicInteger totalDeadLetters;
     private final ActorMetricsCollector metricsCollector;
 
-    public DeadLetterActor() {
+    private final ActorSystem actorSystem;
+
+    public DeadLetterActor(ActorSystem actorSystem) {
+        this.actorSystem = actorSystem;
         this.recentDeadLetters = new ConcurrentLinkedQueue<>();
         this.deadLettersByActor = new ConcurrentHashMap<>();
         this.deadLettersByType = new ConcurrentHashMap<>();

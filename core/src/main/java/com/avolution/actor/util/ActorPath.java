@@ -1,5 +1,7 @@
 package com.avolution.actor.util;
 
+import com.avolution.actor.core.ActorRef;
+
 public class ActorPath {
     private static final String PATH_SEPARATOR = "/";
     private static final String ID_SEPARATOR = "#";
@@ -95,4 +97,10 @@ public class ActorPath {
     public String toString() {
         return fullPath;
     }
+
+    public static boolean isTopLevelActor( String path) {
+        return path.startsWith("/user/") &&
+                path.substring(6).indexOf('/') == -1; // 只有一级路径
+    }
+
 }

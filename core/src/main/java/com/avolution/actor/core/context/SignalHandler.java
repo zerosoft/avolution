@@ -11,6 +11,9 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
 
+/**
+ *
+ */
 public class SignalHandler {
     private final ActorContext context;
     private final ActorLifecycle lifecycle;
@@ -73,7 +76,7 @@ public class SignalHandler {
      * 等待当前消息处理完成后再终止
      */
     private void handleStopSignal() {
-        lifecycle.stop();       // 标记停止状态
+        lifecycle.stop(new CompletableFuture<>());       // 标记停止状态
         context.cleanup();      // 清理资源
     }
 
@@ -82,12 +85,7 @@ public class SignalHandler {
      * 处理完当前邮箱中的所有消息后终止
      */
     private void handlePoisonPill(CompletableFuture<Void> stopFuture) {
-
-        lifecycle.stop();
-
-        context.stopSelf();
-
-        stopFuture.complete(null);
+        lifecycle.stop(stopFuture);
     }
 
     /**

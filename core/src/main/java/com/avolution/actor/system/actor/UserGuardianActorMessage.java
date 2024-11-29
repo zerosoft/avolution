@@ -2,37 +2,32 @@ package com.avolution.actor.system.actor;
 
 import com.avolution.actor.core.AbstractActor;
 import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.Props;
+
+import java.util.concurrent.CompletableFuture;
 
 public interface UserGuardianActorMessage {
 
     class CreateUserActor implements UserGuardianActorMessage {
-        private final Class<? extends AbstractActor<?>> actorClass;
-        private final String name;
+        public final Props props;
+        public final String name;
+        public final CompletableFuture<ActorRef> future;
 
-        public CreateUserActor(Class<? extends AbstractActor<?>> actorClass, String name) {
-            this.actorClass = actorClass;
+        public CreateUserActor(Props props, String name, CompletableFuture<ActorRef> future) {
+            this.props = props;
             this.name = name;
+            this.future = future;
         }
 
-        public Class getActorClass() {
-            return actorClass;
-        }
-
-        public String getName() {
-            return name;
-        }
     }
 
     class StopUserActor implements UserGuardianActorMessage {
-        private final String name;
+        public final String name;
 
-        public StopUserActor(String name) {
-            this.name = name;
+        public StopUserActor(String actorPath) {
+            this.name = actorPath;
         }
 
-        public String getName() {
-            return name;
-        }
     }
 
     class RestartUserActor implements UserGuardianActorMessage {
@@ -53,105 +48,7 @@ public interface UserGuardianActorMessage {
         }
     }
 
-    // Actor 创建成功响应
-    class ActorCreated implements UserGuardianActorMessage {
-        private final ActorRef<?> actorRef;
 
-        public ActorCreated(ActorRef<?> actorRef) {
-            this.actorRef = actorRef;
-        }
 
-        public ActorRef<?> getActorRef() {
-            return actorRef;
-        }
-    }
 
-    // Actor 创建失败响应
-    class ActorCreationFailed implements UserGuardianActorMessage {
-        private final String name;
-        private final Throwable cause;
-
-        public ActorCreationFailed(String name, Throwable cause) {
-            this.name = name;
-            this.cause = cause;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public Throwable getCause() {
-            return cause;
-        }
-    }
-
-    // Actor 停止成功响应
-    class ActorStopped implements UserGuardianActorMessage {
-        private final String name;
-
-        public ActorStopped(String name) {
-            this.name = name;
-        }
-
-        public String getName() {
-            return name;
-        }
-    }
-
-    // Actor 停止失败响应
-    class ActorStopFailed implements UserGuardianActorMessage {
-        private final String name;
-        private final Throwable cause;
-
-        public ActorStopFailed(String name, Throwable cause) {
-            this.name = name;
-            this.cause = cause;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public Throwable getCause() {
-            return cause;
-        }
-    }
-
-    // Actor 重启成功响应
-    class ActorRestarted implements UserGuardianActorMessage {
-        private final String name;
-        private final ActorRef<?> newRef;
-
-        public ActorRestarted(String name, ActorRef<?> newRef) {
-            this.name = name;
-            this.newRef = newRef;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public ActorRef<?> getNewRef() {
-            return newRef;
-        }
-    }
-
-    // Actor 重启失败响应
-    class ActorRestartFailed implements UserGuardianActorMessage {
-        private final String name;
-        private final Throwable cause;
-
-        public ActorRestartFailed(String name, Throwable cause) {
-            this.name = name;
-            this.cause = cause;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public Throwable getCause() {
-            return cause;
-        }
-    }
 }

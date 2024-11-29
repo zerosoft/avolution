@@ -21,11 +21,6 @@ public interface ActorRef<T> {
      */
     void tell(T message, ActorRef sender);
 
-    // 信号发送的默认实现
-    default void signal(Signal signal) {
-        tell((T) signal, ActorRef.noSender());
-    }
-
     /**
      * 发送信号给Actor
      * @param signal 信号

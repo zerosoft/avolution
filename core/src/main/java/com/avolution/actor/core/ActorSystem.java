@@ -12,14 +12,17 @@ import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.message.SignalScope;
+import com.avolution.actor.pattern.ASK;
 import com.avolution.actor.stream.EventStream;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.system.actor.*;
 import com.avolution.actor.exception.ActorCreationException;
+import com.avolution.actor.util.ActorPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -175,7 +178,7 @@ public class ActorSystem {
             // 3. 创建用户守护Actor - 管理用户级Actor
             this.userGuardian = createAndVerifySystemActor(
                     UserGuardianActor.class,
-                    "/system/user",
+                    "/user",
                     "User Guardian"
             );
 
@@ -212,7 +215,7 @@ public class ActorSystem {
 
     private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass,String path) throws ActorSystemCreationException {
         try {
-            Props<T> props = Props.create(actorClass);
+            Props<T> props = Props.create(actorClass,this);
             AbstractActor<T> actor = props.newActor();
             ActorContext context = new ActorContext(path, this, actor, null, props);
             String[] split = path.split("/");
@@ -250,7 +253,10 @@ public class ActorSystem {
         logger.debug("Registered user actor: {}", ref.path());
     }
 
-
+    /**
+     * 等待Actor初始化完成
+     * @param ref
+     */
     private void waitForActorInitialization(ActorRef<?> ref) {
         // 等待Actor进入RUNNING状态
         long deadline = System.currentTimeMillis() + 5000; // 5秒超时
@@ -268,19 +274,19 @@ public class ActorSystem {
         throw new ActorInitializationException("Actor initialization timeout");
     }
 
+    /**
+     * 创建一个Actor
+     * @param props
+     * @param name
+     * @return
+     * @param <T>
+     */
     public <T> ActorRef<T> actorOf(Props<T> props, String name) {
         return actorOf(props, name, null);
     }
 
 
-    private final Map<String,AtomicInteger> pathId = new HashMap<>();
-
-    public int generateUniqueId(String path) {
-        AtomicInteger atomicInteger = pathId.computeIfAbsent(path, k -> new AtomicInteger(0));
-        return atomicInteger.incrementAndGet();
-    }
-
-    public <T> ActorRef<T> actorOf(Props<T> props, String name, ActorContext actorContextRef) {
+    public <T> ActorRef<T> actorOf(Props<T> props, String name, ActorContext parentContext) {
         // 验证系统状态和Actor名称
         if (state.get() != SystemState.RUNNING) {
             throw new IllegalStateException("Actor system is not running");
@@ -288,12 +294,13 @@ public class ActorSystem {
 
         validateActorName(name);
 
-        String path;
-        if (actorContextRef != null) {
-            path = actorContextRef.getPath() + "/" + name;
-        } else {
-            path = "/user/" + name;
+
+        // 2. 处理顶级Actor创建
+        if (parentContext == null) {
+            return createViaUserGuardian(props, name);
         }
+
+        String path = parentContext.getPath() + "/" + name;
 
         // 检查是否已存在
         if (contextManager.hasContext(path)) {
@@ -302,15 +309,13 @@ public class ActorSystem {
 
         try {
             AbstractActor<T> actor = props.newActor();
-            ActorContext context = new ActorContext(path, this, actor, actorContextRef, props);
+            ActorContext context = new ActorContext(path, this, actor, parentContext, props);
 
             LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path,name,deadLetters);
             actor.setContext(context);
             actor.setSelfRef(actorRef);
 
             context.start();
-            // 注册Actor
-            registerActor(actorRef, context);
 
             logger.debug("Created actor: {}", path);
             return actorRef;
@@ -320,7 +325,37 @@ public class ActorSystem {
         }
     }
 
+    /**
+     * 通过用户守护者创建Actor
+     * @param props
+     * @param name
+     * @return
+     * @param <T>
+     */
+    private <T> ActorRef<T> createViaUserGuardian(Props<T> props, String name) {
+        CompletableFuture<ActorRef> future = new CompletableFuture<>();
+        // 通过用户守护者创建Actor
+        userGuardian.tell(new UserGuardianActorMessage.CreateUserActor(props, name, future),ActorRef.noSender());
+        try {
+            // 等待创建完成，设置超时
+            return future.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            throw new ActorCreationException("Actor creation timeout: " + name);
+        } catch (Exception e) {
+            throw new ActorCreationException("Failed to create actor via user guardian: " + name, e);
+        }
+    }
 
+    /**
+     * 验证Actor名称是否符合规范。
+     * my-actor
+     * Actor_123
+     * validName
+     * anotherActorName
+     * actor-name-123
+     * @param name 要验证的Actor名称
+     * @throws IllegalArgumentException 如果名称不符合规范
+     */
     private void validateActorName(String name) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Actor name cannot be null or empty");
@@ -354,8 +389,8 @@ public class ActorSystem {
         }
     }
 
-    public CompletableFuture<Void> stop(ActorRef actor) {
 
+    public CompletableFuture<Void> stop(ActorRef actor) {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
         SignalEnvelope signalEnvelope = SignalEnvelope.builder()

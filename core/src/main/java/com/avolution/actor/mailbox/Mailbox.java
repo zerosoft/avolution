@@ -8,11 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.exception.MailboxException;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
@@ -37,7 +35,7 @@ public class Mailbox {
 
     private int compareEnvelopes(Envelope e1, Envelope e2) {
         if (e1 instanceof SignalEnvelope && e2 instanceof SignalEnvelope) {
-            return ((SignalEnvelope) e1).getPriority().compareTo(((SignalEnvelope) e2).getPriority());
+            return (e1).getPriority().compareTo((e2).getPriority());
         }
         return e1.getPriority().compareTo(e2.getPriority());
     }

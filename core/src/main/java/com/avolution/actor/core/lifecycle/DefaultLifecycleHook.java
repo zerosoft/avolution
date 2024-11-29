@@ -1,10 +1,13 @@
 package com.avolution.actor.core.lifecycle;
 
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.exception.ActorInitializationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.exception.ActorInitializationException;
+/**
+ * 默认生命周期钩子
+ */
 public class DefaultLifecycleHook implements InternalLifecycleHook {
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultLifecycleHook.class);
@@ -12,7 +15,8 @@ public class DefaultLifecycleHook implements InternalLifecycleHook {
     @Override
     public void aroundPreStart(ActorContext context) {
         try {
-            context.getLifecycle().start();
+            context.getSelf().initialize();
+
             logger.debug("Actor starting: {}", context.getPath());
         } catch (Exception e) {
             logger.error("Failed to start actor: {}", context.getPath(), e);
@@ -24,7 +28,6 @@ public class DefaultLifecycleHook implements InternalLifecycleHook {
     public void aroundPostStop(ActorContext context) {
         try {
             context.getMailbox().clear();
-            context.getLifecycle().stop();
             context.getActorSystem().unregisterActor(context.getPath());
             logger.debug("Actor stopped: {}", context.getPath());
         } catch (Exception e) {

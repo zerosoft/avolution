@@ -8,24 +8,17 @@ import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.exception.ActorSystemCreationException;
 import com.avolution.actor.exception.SystemFailureException;
 import com.avolution.actor.core.lifecycle.LifecycleState;
-import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.SignalEnvelope;
-import com.avolution.actor.message.SignalScope;
-import com.avolution.actor.pattern.ASK;
+import com.avolution.actor.message.*;
 import com.avolution.actor.stream.EventStream;
 import com.avolution.actor.supervision.DeathWatch;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.system.actor.*;
 import com.avolution.actor.exception.ActorCreationException;
-import com.avolution.actor.util.ActorPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -393,9 +386,10 @@ public class ActorSystem {
     public CompletableFuture<Void> stop(ActorRef actor) {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
-        SignalEnvelope signalEnvelope = SignalEnvelope.builder()
-                .signal(Signal.POISON_PILL)
-                .priority(Envelope.Priority.HIGH)
+        Envelope signalEnvelope = Envelope.builder()
+                .message(Signal.POISON_PILL)
+                .type(MessageType.SIGNAL)
+                .priority(Priority.HIGH)
                 .scope(SignalScope.SINGLE)
                 .build();
         signalEnvelope.addMetadata("stopFuture", stopFuture);
@@ -409,9 +403,10 @@ public class ActorSystem {
                         if (exception instanceof TimeoutException) {
                             // 输出超时日志
                             logger.warn("Actor {} failed to stop within the specified timeout of 10 seconds.", actor.path());
-                            SignalEnvelope kill = SignalEnvelope.builder()
-                                    .signal(Signal.KILL)
-                                    .priority(Envelope.Priority.HIGH)
+                            Envelope kill = Envelope.builder()
+                                    .message(Signal.KILL)
+                                    .priority(Priority.HIGH)
+                                    .type(MessageType.SIGNAL)
                                     .scope(SignalScope.SINGLE)
                                     .build();
                             //通知关闭
@@ -476,7 +471,6 @@ public class ActorSystem {
 
             // 2. 通知死亡监视器
             deathWatch.signalTermination(failedActor, false);
-
             // 3. 发送到系统守护者
             systemGuardian.tell(Signal.SYSTEM_FAILURE, ActorRef.noSender());
 
@@ -497,9 +491,10 @@ public class ActorSystem {
     private CompletableFuture<Void> stopActor(ActorRef actor) {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
-        SignalEnvelope signalEnvelope = SignalEnvelope.builder()
-                .signal(Signal.POISON_PILL)
-                .priority(Envelope.Priority.HIGH)
+        Envelope signalEnvelope = Envelope.builder()
+                .message(Signal.POISON_PILL)
+                .type(MessageType.SIGNAL)
+                .priority(Priority.HIGH)
                 .scope(SignalScope.SINGLE)
                 .build();
         signalEnvelope.addMetadata("stopFuture", stopFuture);
@@ -513,9 +508,9 @@ public class ActorSystem {
                         if (exception instanceof TimeoutException) {
                             // 输出超时日志
                             logger.warn("Actor {} failed to stop within the specified timeout of 10 seconds.", actor.path());
-                            SignalEnvelope kill = SignalEnvelope.builder()
-                                    .signal(Signal.KILL)
-                                    .priority(Envelope.Priority.HIGH)
+                            Envelope kill = Envelope.builder()
+                                    .message(Signal.KILL)
+                                    .priority(Priority.HIGH)
                                     .scope(SignalScope.SINGLE)
                                     .build();
                             //通知关闭

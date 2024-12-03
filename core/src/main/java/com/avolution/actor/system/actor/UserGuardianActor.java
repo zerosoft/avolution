@@ -5,22 +5,11 @@ import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.exception.ActorCreationException;
-import com.avolution.actor.message.Envelope;
-import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.SignalEnvelope;
-import com.avolution.actor.message.SignalScope;
-import com.avolution.actor.supervision.DefaultSupervisorStrategy;
-import com.avolution.actor.supervision.SupervisorStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 用户守护Actor

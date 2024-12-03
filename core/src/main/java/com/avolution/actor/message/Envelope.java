@@ -1,11 +1,13 @@
 package com.avolution.actor.message;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Collections;
-import java.util.Map;
 
 import com.avolution.actor.core.ActorRef;
 
@@ -13,72 +15,81 @@ import com.avolution.actor.core.ActorRef;
  * Actor消息的 信封
  * @param
  */
-public class Envelope {
-
-    /**
-     * 消息 优先级
-     */
-    public enum Priority {
-        HIGH(0),
-        NORMAL(1),
-        LOW(2);
-
-        private final int value;
-
-        Priority(int value) {
-            this.value = value;
-        }
-
-        public int getValue() {
-            return value;
-        }
-    }
+public class Envelope
+{
 
     /**
      * 消息类型 Id
      */
     private final String messageId;
+    /**
+     * 消息
+     */
     private final Object message;
-
+    /**
+     * 发送者
+     */     
     private final ActorRef sender;
+    /**
+     * 接收者
+     */
     private final ActorRef recipient;
-
+    /**
+     * 时间戳
+     */     
     private final Instant timestamp;
-    private final MessageType messageType;
-
+    /**
+     * 重试次数
+     */
     private final int retryCount;
+    /**
+     * 元数据
+     */         
     private final Map<String, Object> metadata;
-
+    /**
+     * 处理过的演员集
+     */     
     private final Set<String> processedActors;
-
+    /**
+     * 消息类型
+     */     
+    private final MessageType messageType ;
+    /**
+     * 信号范围
+     */     
+    private final SignalScope scope;
+    /**
+     * 优先级
+     */     
     private final Priority priority;
 
-    public Envelope(Object message, ActorRef sender, ActorRef recipient,MessageType messageType, int retryCount) {
-        this(message, sender, recipient, messageType, retryCount, Priority.NORMAL);
-    }
-
-    public Envelope(Object message, ActorRef sender, ActorRef recipient, MessageType messageType, int retryCount, Priority priority) {
-        validateInputs(message, recipient);
+    /**
+     * 构造函数
+     * @param builder
+     */
+    private Envelope(Builder builder) {
         this.messageId = UUID.randomUUID().toString();
-        this.message = message;
-        this.sender = sender;
-        this.recipient = recipient;
-        this.timestamp = Instant.now();
-        this.messageType = messageType != null ? messageType : MessageType.NORMAL;
-        this.retryCount = retryCount;
-        this.metadata = new ConcurrentHashMap<>();
-        this.processedActors = ConcurrentHashMap.newKeySet();
-        this.priority = priority;
+        this.message = builder.message;
+        this.sender = builder.sender;
+        this.recipient = builder.recipient;
+        this.timestamp = builder.timestamp;
+        this.messageType = builder.type;
+        this.scope = builder.scope;
+        this.priority = builder.priority;
+        this.retryCount = builder.retryCount;
+        this.metadata = builder.metadata;
+        this.processedActors = builder.processedActors;
+
+        // 检查必要类型参数不能没有
+        if (message == null || messageType == null) {
+            throw new NullPointerException("message和messageType不能为空");
+        }
     }
 
-    private void validateInputs(Object message, ActorRef recipient) {
-        if (message == null) {
-            throw new IllegalArgumentException("Message cannot be null");
-        }
-//        if (recipient == null) {
-//            throw new IllegalArgumentException("Recipient cannot be null");
-//        }
+    public static Builder builder() {
+        return new Builder();
     }
+
 
     // 基本的 getter 方法
     public String getMessageId() {
@@ -101,9 +112,6 @@ public class Envelope {
         return timestamp;
     }
 
-    public MessageType getMessageType() {
-        return messageType;
-    }
 
     public int getRetryCount() {
         return retryCount;
@@ -134,6 +142,14 @@ public class Envelope {
         return Collections.unmodifiableMap(metadata);
     }
 
+    public MessageType getMessageType() {
+        return messageType;
+    }
+
+    public SignalScope getScope() {
+        return scope;
+    }
+
     // 处理记录
     public void markProcessed(String actorPath) {
         processedActors.add(actorPath);
@@ -147,26 +163,98 @@ public class Envelope {
         return Collections.unmodifiableSet(processedActors);
     }
 
-    // 创建新的 Envelope
-    public Envelope withRetry() {
-        return new Envelope(message, sender, recipient, messageType, retryCount + 1, priority);
-    }
-
-    public Envelope withPriority(Priority newPriority) {
-        return new Envelope(message, sender, recipient, messageType, retryCount, newPriority);
-    }
-
     public boolean isSystemMessage() {
-        return messageType == MessageType.SYSTEM;
-    }
-
-    public boolean isDeadLetter() {
-        return retryCount >= 3;
+        return messageType ==MessageType.SYSTEM;
     }
 
     @Override
     public String toString() {
         return String.format("Envelope[id=%s, message=%s, type=%s, retry=%d, priority=%s]", messageId, message.getClass().getSimpleName(), messageType, retryCount, priority);
+    }
+
+    /**
+     * Envelope builder构造器
+     *
+     * 该构造器用于创建Envelope对象，提供了多个方法来设置Envelope的不同属性。
+     * 用户可以通过链式调用这些方法来设置Envelope的消息体、发送者、接收者、时间戳、重试次数、元数据、处理过的演员集、类型、信号范围和优先级。
+     * 最终，通过build()方法创建Envelope对象。
+     */
+    public static class Builder{
+        private Object message;
+
+        private  ActorRef sender;
+        private  ActorRef recipient;
+
+        private  Instant timestamp;
+        private  int retryCount=0;
+
+        private  Map<String, Object> metadata=new HashMap<>();
+
+        private  Set<String> processedActors=new HashSet<>();
+
+        private  MessageType type=MessageType.NORMAL;
+        private  SignalScope scope=SignalScope.SINGLE;
+        private  Priority priority=Priority.NORMAL;
+
+        public Builder() {
+            this.metadata = new ConcurrentHashMap<>();
+            this.processedActors = ConcurrentHashMap.newKeySet();
+        }
+
+        public Builder message(Object message) {
+            this.message = message;
+            return this;
+        }
+
+        public Builder sender(ActorRef sender) {
+            this.sender = sender;
+            return this;
+        }
+
+        public Builder recipient(ActorRef recipient) {
+            this.recipient = recipient;
+            return this;
+        }
+
+        public Builder timestamp(Instant timestamp) {
+            this.timestamp = timestamp;
+            return this;
+        }
+
+        public Builder retryCount(int retryCount) {
+            this.retryCount = retryCount;
+            return this;
+        }
+
+        public Builder metadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+            return this;
+        }
+
+        public Builder processedActors(Set<String> processedActors) {
+            this.processedActors = processedActors;
+            return this;
+        }
+
+        public Builder type(MessageType type) {
+            this.type = type;
+            return this;
+        }
+
+        public Builder scope(SignalScope scope) {
+            this.scope = scope;
+            return this;
+        }
+
+        public Builder priority(Priority priority) {
+            this.priority = priority;
+            return this;
+        }
+
+        public Envelope build() {
+            return new Envelope(this);
+        }
+
     }
 }
 

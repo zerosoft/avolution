@@ -2,7 +2,6 @@ package com.avolution.actor.core;
 
 
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.system.NoSender;
 
 import java.time.Duration;

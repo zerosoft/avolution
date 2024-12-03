@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
+import com.avolution.actor.message.Priority;
 import com.avolution.actor.pattern.ASK;
 import org.slf4j.Logger;
 
@@ -18,7 +19,6 @@ import com.avolution.actor.exception.ActorInitializationException;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.SignalEnvelope;
 
 
 /**
@@ -146,10 +146,17 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
             throw new IllegalArgumentException("Message cannot be null");
         }
         if (!isTerminated()) {
-            if (message instanceof SignalEnvelope signalEnvelope) {
+
+            if (message instanceof Envelope signalEnvelope) {
                 context.tell(signalEnvelope);
             }else {
-                Envelope envelope=new Envelope(message,sender,this,MessageType.NORMAL,0);
+                Envelope.Builder builder = Envelope.builder();
+                builder.message(message);
+                builder.sender(sender);
+                builder.recipient(this.getSelfRef());
+                builder.type(MessageType.NORMAL);
+                builder.retryCount(0);
+                Envelope envelope = builder.build();
                 context.tell(envelope);
             }
 
@@ -166,7 +173,7 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
             throw new IllegalArgumentException("Signal cannot be null");
         }
         if (!isTerminated()) {
-            SignalEnvelope envelope = createSignalEnvelope(signal, sender);
+            Envelope envelope = createSignalEnvelope(signal, sender);
             tell(envelope);
         }
     }
@@ -175,7 +182,7 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
      * 发送消息
      * @param envelope 消息
      */
-    public void tell(SignalEnvelope envelope) {
+    public void tell(Envelope envelope) {
         if (!isTerminated()) {
             context.tell(envelope);
         }
@@ -187,12 +194,13 @@ public abstract class AbstractActor<T> implements ActorRef<T> {
      * @param sender 发送者
      * @return
      */ 
-    private SignalEnvelope createSignalEnvelope(Signal signal, ActorRef sender) {
-        return SignalEnvelope.builder()
-                .signal(signal)
+    private Envelope createSignalEnvelope(Signal signal, ActorRef sender) {
+        return Envelope.builder()
+                .message(signal)
+                .type(MessageType.SIGNAL)
                 .sender(sender != null ? sender : ActorRef.noSender())
-                .receiver((ActorRef<Signal>) getSelfRef())
-                .priority(Envelope.Priority.HIGH)  // 信号消息优先级高
+                .recipient(getSelfRef())
+                .priority(Priority.HIGH)  // 信号消息优先级高
                 .build();
     }
 

@@ -3,6 +3,7 @@ package com.avolution.actor.stream;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,8 +57,9 @@ public class EventStream {
         try {
             Set<ActorRef> eventSubscribers = subscribers.get(event.getClass());
             if (eventSubscribers != null && !eventSubscribers.isEmpty()) {
-                EventEnvelope envelope = EventEnvelope.builder()
-                        .event(event)
+                Envelope envelope = Envelope.builder()
+                        .message(event)
+                        .type(MessageType.SYSTEM)
                         .build();
 
                 for (ActorRef subscriber : eventSubscribers) {

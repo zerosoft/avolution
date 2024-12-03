@@ -3,8 +3,8 @@ package com.avolution.actor.core.context;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.lifecycle.ActorLifecycle;
 import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.message.SignalEnvelope;
 import com.avolution.actor.message.SignalScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,8 +34,8 @@ public class SignalHandler {
      * 根据不同的信号类型调用相应的处理方法
      * @param envelope 信号封装对象
      */
-    public void handle(SignalEnvelope envelope) {
-        Signal signal = envelope.getSignal();
+    public void handle(Envelope envelope) {
+        Signal signal = (Signal) envelope.getMessage();
         switch (signal) {
             // 处理各类信号
             case STOP -> handleStopSignal();              // 优雅停止信号
@@ -167,11 +167,11 @@ public class SignalHandler {
             return;
         }
 
-        SignalEnvelope escalateSignal = SignalEnvelope.builder()
-                .signal(Signal.ESCALATE)
+        Envelope escalateSignal = Envelope.builder()
+                .message(Signal.ESCALATE)
                 .sender(context.getSelf())
-                .receiver(parent.getSelf())
-                .priority(Envelope.Priority.HIGH)
+                .recipient(parent.getSelf().getSelfRef())
+                .priority(Priority.HIGH)
                 .scope(SignalScope.SINGLE)
                 .build();
 

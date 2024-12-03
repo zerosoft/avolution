@@ -5,14 +5,12 @@ import com.avolution.actor.core.lifecycle.ActorLifecycle;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.*;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
-import com.avolution.actor.util.ActorPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+
 
 /**
  * Actor上下文
@@ -116,12 +114,30 @@ public class ActorContext  {
      * @param envelope
      */
     private void processMessage(Envelope envelope) {
-        if (envelope instanceof SignalEnvelope signalEnvelope) {
-            signalHandler.handle(signalEnvelope);
-        } else {
-            self.onReceive(envelope.getMessage());
+        try {
+            switch (envelope.getMessageType()) {
+                case SIGNAL -> handleSignal(envelope);
+                case SYSTEM -> handleSystemMessage(envelope);
+                case DEAD_LETTER -> handleDeadLetter(envelope);
+                default -> self.onReceive(envelope.getMessage());
+            }
+        } catch (Exception e) {
+            handleProcessingError(e, envelope);
         }
     }
+
+    private void handleSignal(Envelope envelope) {
+         signalHandler.handle(envelope);
+    }
+
+    private void broadcastToChildren(Signal signal, Envelope envelope) {
+//        children.values().forEach(child -> child.tell(envelope.withNewRecipient(child)));
+    }
+
+    private void handleSystemMessage(Envelope envelope) {
+        // 处理系统消息
+    }
+
 
     private void handleProcessingError(Exception e, Envelope envelope) {
         logger.error("Error processing message: {}", envelope, e);
@@ -261,9 +277,9 @@ public class ActorContext  {
 
         // 子Actor停止逻辑
         if (children.containsKey(actor.name())) {
-            SignalEnvelope signal = SignalEnvelope.builder()
-                    .signal(Signal.POISON_PILL)
-                    .priority(Envelope.Priority.HIGH)
+            Envelope signal = Envelope.builder()
+                    .message(Signal.POISON_PILL)
+                    .priority(Priority.HIGH)
                     .scope(SignalScope.SINGLE)
                     .build();
             signal.addMetadata("stopFuture", stopFuture);
@@ -283,9 +299,9 @@ public class ActorContext  {
     private void handleStopTimeout(ActorRef actor, Throwable e) {
         if (e instanceof TimeoutException) {
             logger.warn("Actor stop timeout: {}", actor.path());
-            SignalEnvelope kill = SignalEnvelope.builder()
-                    .signal(Signal.KILL)
-                    .priority(Envelope.Priority.HIGH)
+            Envelope kill = Envelope.builder()
+                    .message(Signal.KILL)
+                    .priority(Priority.HIGH)
                     .scope(SignalScope.SINGLE)
                     .build();
             actor.tell(kill, getSelf().getSelfRef());

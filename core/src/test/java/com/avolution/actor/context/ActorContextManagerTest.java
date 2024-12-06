@@ -113,7 +113,7 @@ class ActorContextManagerTest {
     }
 
     // 测试用Actor类
-    private static class TestActor extends AbstractActor<Object> {
+    private static class TestActor extends UnTypedActor<Object> {
         @Override
         public void onReceive(Object message) {
             // 测试实现

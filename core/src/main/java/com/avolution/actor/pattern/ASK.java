@@ -9,10 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
-import com.avolution.actor.core.AbstractActor;
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.core.Props;
+import com.avolution.actor.core.*;
 import com.avolution.actor.exception.AskTimeoutException;
 
 /**
@@ -68,7 +65,7 @@ public final class ASK {
      * @return
      */
     public static <T, R> CompletableFuture<R> ask(
-            AbstractActor<T> target,
+            UnTypedActor<T> target,
             Duration timeout,
             Function<ActorRef<R>, T> messageFactory) {
 
@@ -76,7 +73,7 @@ public final class ASK {
         ActorSystem system = target.getContext().getActorSystem();
 
         // 创建临时响应Actor
-        Props<R> replyProps = Props.create(() -> new AbstractActor<R>() {
+        Props<R> replyProps = Props.create(() -> new TypedActor<R>() {
             private final ScheduledFuture timeoutTask;
             {
                 // 设置超时任务

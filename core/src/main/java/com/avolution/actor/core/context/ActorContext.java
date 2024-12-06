@@ -1,7 +1,10 @@
 package com.avolution.actor.core.context;
 
 import com.avolution.actor.core.*;
+import com.avolution.actor.core.lifecycle.ActorContextInternalLifecycleHook;
 import com.avolution.actor.core.lifecycle.ActorLifecycle;
+import com.avolution.actor.core.lifecycle.InternalLifecycleHook;
+import com.avolution.actor.lifecycle.ActorContextLifecycle;
 import com.avolution.actor.mailbox.Mailbox;
 import com.avolution.actor.message.*;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
@@ -13,47 +16,59 @@ import java.util.concurrent.*;
 
 
 /**
- * Actor上下文
+ * Actor上下文类
+ * 负责管理Actor的生命周期、消息处理和子Actor管理
  */
-public class ActorContext  {
+public class ActorContext implements ActorContextLifecycle {
     private static final Logger logger = LoggerFactory.getLogger(ActorContext.class);
-
-    private final String path;                    // Actor路径
+    // Actor在系统中的唯一路径标识
+    private final String path;
+    // Actor所属的系统实例
     private final ActorSystem system;
-    // Actor系统引用
-    private final AbstractActor self;          // Actor实例
-
-    private final ActorContext parent;            // 父Actor上下文
-    private final Mailbox mailbox;                // 消息邮箱
-
-    private final Map<String, ActorRef> children = new ConcurrentHashMap<>();  // 子Actor映射
-    // 生命周期
+    // 当前Actor实例
+    private final UnTypedActor<?> unTypedActor;
+    // 父Actor的上下文，用于构建Actor层级关系
+    private final ActorContext parent;
+    // Actor的消息邮箱，用于消息队列管理
+    private final Mailbox mailbox;
+    // 子Actor映射表，保存所有子Actor的引用
+    private final Map<String, ActorRef<?>> children = new ConcurrentHashMap<>();
+    // Actor的生命周期管理器
     private ActorLifecycle lifecycle;
-    // 信号处理器
+    // 信号处理器，处理系统信号
     private SignalHandler signalHandler;
-
-    private final ActorScheduler scheduler;        // 调度器
+    // Actor的调度器，负责消息的调度执行
+    private final ActorScheduler scheduler;
+    // 内部生命周期钩子，处理生命周期事件
+    private InternalLifecycleHook internalLifecycleHook;
 
     /**
      * 初始化Actor上下文
      * @param path Actor路径
-     * @param system Actor系统
+     * @param system Actor系统实例
      * @param self Actor实例
      * @param parent 父Actor上下文
-     * @param props Actor属性配置
+     * @param props Actor配置属性
      */
-    public ActorContext(String path, ActorSystem system, AbstractActor<?> self, ActorContext parent, Props props) {
+    public ActorContext(String path, ActorSystem system, UnTypedActor self,
+                       ActorContext parent, Props props) {
         this.path = path;
         this.system = system;
-        this.self = self;
+        this.unTypedActor = self;
         this.parent = parent;
         this.mailbox = new Mailbox(system, props.throughput());
         this.scheduler = new DefaultActorScheduler();
-        this.lifecycle =new ActorLifecycle(this);
-        this.signalHandler=new SignalHandler(this,lifecycle);
+        this.signalHandler=new SignalHandler(this);
+
+        this.lifecycle =new ActorLifecycle(this,self);
+        // 将 lifecycle 传给 InternalLifecycleHook
+        this.internalLifecycleHook=new ActorContextInternalLifecycleHook(this,lifecycle);
     }
 
-
+    /**
+     * 发送消息到Actor
+     * 如果Actor未终止，将消息加入邮箱；否则作为死信处理
+     */
     public void tell(Envelope envelope) {
         if (!lifecycle.isTerminated()) {
             mailbox.enqueue(envelope);
@@ -65,18 +80,22 @@ public class ActorContext  {
         }
     }
 
+    /**
+     * 处理死信消息
+     * 将消息转换为死信并发送到系统的死信Actor
+     */
     private void handleDeadLetter(Envelope envelope) {
         IDeadLetterActorMessage.DeadLetter deadLetter = IDeadLetterActorMessage.messageToDeadLetter(envelope);
         // 记录死信
         logger.warn("Dead letter received: {}", deadLetter);
 
         // 发送到系统的死信Actor
-        system.getDeadLetters().tell(deadLetter, self.getSelfRef());
+        system.getDeadLetters().tell(deadLetter, unTypedActor.getSelfRef());
     }
 
     /**
      * 处理邮箱中的消息
-     * 确保消息按顺序处理，并在必要时重新调度
+     * 按顺序处理消息，并在必要时重新调度
      */
     public void processMailbox() {
         if (lifecycle.isTerminated()) {
@@ -85,7 +104,8 @@ public class ActorContext  {
 
         try {
             // 处理邮箱中的消息
-            while (!mailbox.isSuspended() || mailbox.hasHighPrioritySignals()) {
+            while (!mailbox.isSuspended()
+                    || mailbox.hasHighPrioritySignals()) {
                 // 从邮箱中获取消息
                 Envelope message = mailbox.poll();
                 if (message == null) {
@@ -94,7 +114,7 @@ public class ActorContext  {
 
                 try {
                     // 设置消息发送者
-                    self.setSender(message.getSender());
+                    unTypedActor.setSender(message.getSender());
                     processMessage(message);
                 } catch (Exception e) {
                     handleProcessingError(e, message);
@@ -109,9 +129,11 @@ public class ActorContext  {
         }
     }
 
+
+
     /**
-     * 处理消息
-     * @param envelope
+     * 处理单个消息
+     * 根据消息类型分发到不同的处理器
      */
     private void processMessage(Envelope envelope) {
         try {
@@ -119,33 +141,31 @@ public class ActorContext  {
                 case SIGNAL -> handleSignal(envelope);
                 case SYSTEM -> handleSystemMessage(envelope);
                 case DEAD_LETTER -> handleDeadLetter(envelope);
-                default -> self.onReceive(envelope.getMessage());
+                default -> unTypedActor.onReceive(envelope.getMessage());
             }
         } catch (Exception e) {
             handleProcessingError(e, envelope);
         }
     }
 
-    private void handleSignal(Envelope envelope) {
-         signalHandler.handle(envelope);
-    }
-
-    private void broadcastToChildren(Signal signal, Envelope envelope) {
-//        children.values().forEach(child -> child.tell(envelope.withNewRecipient(child)));
-    }
-
     private void handleSystemMessage(Envelope envelope) {
-        // 处理系统消息
+
     }
 
+    private void handleProcessingError(Exception exception, Envelope envelope) {
 
-    private void handleProcessingError(Exception e, Envelope envelope) {
-        logger.error("Error processing message: {}", envelope, e);
     }
 
     /**
-     * 获取子Actor的映射
-     * @return
+     * 处理系统信号
+     */
+    private void handleSignal(Envelope envelope) {
+        signalHandler.handle(envelope);
+    }
+
+    /**
+     * 获取所有子Actor的映射
+     * @return 子Actor映射表的副本
      */
     public Map<String, ActorRef> getChildren() {
         Map<String, ActorRef> result=new HashMap<>();
@@ -157,6 +177,85 @@ public class ActorContext  {
     }
 
 
+    // 生命周期管理方法实现
+    @Override
+    public boolean start() {
+        try {
+            internalLifecycleHook.executePreStart();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to start actor: {}", path, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean stop() {
+        try {
+            CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+            lifecycle.stop(stopFuture);
+            stopFuture.get(10, TimeUnit.SECONDS);
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to stop actor: {}", path, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean stopNow() {
+        try {
+            internalLifecycleHook.executePostStop();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to stop actor immediately: {}", path, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean restart(Throwable cause) {
+        try {
+            internalLifecycleHook.executePreRestart(cause);
+            internalLifecycleHook.executePostRestart(cause);
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to restart actor: {}", path, e);
+            return false;
+        }
+    }
+
+    /**
+     * 恢复Actor
+     */
+    @Override
+    public boolean resume() {
+        try {
+            internalLifecycleHook.executeResume();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to suspend actor: {}", path, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean suspend() {
+        try {
+            internalLifecycleHook.executeSuspend();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to suspend actor: {}", path, e);
+            return false;
+        }
+    }
+
+    /**
+     * 创建子Actor
+     * @param props Actor配置
+     * @param name Actor名称
+     * @return 新创建的ActorRef
+     */
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
         ActorRef<R> child = system.actorOf(props, name,this);
@@ -164,35 +263,28 @@ public class ActorContext  {
         return child;
     }
 
-    /**
-     * 创建启动Actor
-     */
-    public void start() {
-        lifecycle.start();
-    }
 
     /**
-     * 恢复Actor
+     * 监视指定Actor
+     * 当目标Actor终止时接收Terminated信号
      */
-    public void resume() {
-        lifecycle.resume();
-    }
-
-
     public void watch(ActorRef<?> target) {
         watch(target, () -> {
             // 默认处理：接收 Terminated 信号
-            self.tell(Signal.TERMINATED, target);
+            unTypedActor.tell(Signal.TERMINATED, target);
         });
     }
 
+    /**
+     * 监视指定Actor，并提供自定义回调
+     */
     public void watch(ActorRef<?> target, Runnable callback) {
         if (target == null || callback == null) {
             return;
         }
 
         // 转换为 DeathWatch 回调
-        system.getDeathWatch().watch(self.getSelfRef(), target, (terminated, normal) -> {
+        system.getDeathWatch().watch(unTypedActor.getSelfRef(), target, (terminated, normal) -> {
             try {
                 callback.run();
             } catch (Exception e) {
@@ -201,13 +293,18 @@ public class ActorContext  {
         });
     }
 
+    /**
+     * 取消监视指定Actor
+     */
     public void unwatch(ActorRef<?> target) {
         if (target != null) {
-            system.getDeathWatch().unwatch(self.getSelfRef(), target);
+            system.getDeathWatch().unwatch(unTypedActor.getSelfRef(), target);
         }
     }
 
-
+    /**
+     * 验证子Actor名称的有效性
+     */
     private void validateChildName(String name) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Child name cannot be null or empty");
@@ -217,16 +314,13 @@ public class ActorContext  {
         }
     }
 
-    public AbstractActor getSelf() {
-        return self;
+    // Getter方法
+    public UnTypedActor getUnTypedActor() {
+        return unTypedActor;
     }
 
     public IScheduler getScheduler() {
         return scheduler;
-    }
-
-    public void suspend() {
-        mailbox.suspend();
     }
 
     public Mailbox getMailbox() {
@@ -249,17 +343,15 @@ public class ActorContext  {
         return parent;
     }
 
-    /**
-     * 清理资源
-     */
-    public void cleanup() {
-
-    }
 
     public void removeChild(ActorRef<?> child) {
         if (child != null) {
             children.remove(child.name());
         }
+    }
+
+    public CompletableFuture<Void> stop(CompletableFuture<Void> stop){
+        return lifecycle.stop(stop);
     }
 
     /**
@@ -271,7 +363,7 @@ public class ActorContext  {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
         // 直接调用生命周期管理
-        if (actor.path().equals(getSelf().path())) {
+        if (actor.path().equals(getUnTypedActor().path())) {
             return lifecycle.stop(stopFuture);
         }
 
@@ -281,9 +373,11 @@ public class ActorContext  {
                     .message(Signal.POISON_PILL)
                     .priority(Priority.HIGH)
                     .scope(SignalScope.SINGLE)
+                    .type(MessageType.SIGNAL)
                     .build();
             signal.addMetadata("stopFuture", stopFuture);
-            actor.tell(signal, getSelf().getSelfRef());
+
+            actor.tell(signal, getUnTypedActor().getSelfRef());
 
             return stopFuture.orTimeout(10, TimeUnit.SECONDS)
                     .exceptionally(e -> {
@@ -304,7 +398,7 @@ public class ActorContext  {
                     .priority(Priority.HIGH)
                     .scope(SignalScope.SINGLE)
                     .build();
-            actor.tell(kill, getSelf().getSelfRef());
+            actor.tell(kill, getUnTypedActor().getSelfRef());
         }
     }
 }

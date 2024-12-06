@@ -3,14 +3,11 @@ package com.avolution.actor.deadLetter;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,7 +28,7 @@ public class DeadLetterTest {
         }
     }
 
-   public static class WatcherActor extends AbstractActor<Object> {
+   public static class WatcherActor extends UnTypedActor<Object> {
         private final AtomicBoolean terminatedReceived = new AtomicBoolean(false);
         private final AtomicInteger deadLetterCount = new AtomicInteger(0);
         private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();

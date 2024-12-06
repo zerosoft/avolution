@@ -1,6 +1,6 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.Props;
 
@@ -32,9 +32,9 @@ public interface UserGuardianActorMessage {
 
     class RestartUserActor implements UserGuardianActorMessage {
         private final String name;
-        private final Class<? extends AbstractActor<?>> actorClass;
+        private final Class<? extends UnTypedActor<?>> actorClass;
 
-        public RestartUserActor(String name, Class<? extends AbstractActor<?>> actorClass) {
+        public RestartUserActor(String name, Class<? extends UnTypedActor<?>> actorClass) {
             this.name = name;
             this.actorClass = actorClass;
         }
@@ -43,7 +43,7 @@ public interface UserGuardianActorMessage {
             return name;
         }
 
-        public Class<? extends AbstractActor<?>> getActorClass() {
+        public Class<? extends UnTypedActor<?>> getActorClass() {
             return actorClass;
         }
     }

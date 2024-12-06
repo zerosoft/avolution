@@ -6,7 +6,6 @@ import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -25,7 +24,7 @@ public class LocalActorRef<T> implements ActorRef<T> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalActorRef.class);
     // 弱引用，避免循环引用
-    private WeakReference<AbstractActor<T>> actor;
+    private UnTypedActor<T> actor;
     // 原始路径
     private final String originalPath;
     // 原始名称
@@ -36,8 +35,8 @@ public class LocalActorRef<T> implements ActorRef<T> {
     private final AtomicInteger retryCount;
     private final Duration retryTimeout;
 
-    public LocalActorRef(AbstractActor<T> actor,String originalPath,String originalName,ActorRef<IDeadLetterActorMessage> deadLetters) {
-        this.actor = new WeakReference<>(actor);
+    public LocalActorRef(UnTypedActor<T> actor, String originalPath, String originalName, ActorRef<IDeadLetterActorMessage> deadLetters) {
+        this.actor = actor;
         this.originalPath =originalPath;
         this.originalName = originalName;
         this.deadLetters =deadLetters;
@@ -78,7 +77,7 @@ public class LocalActorRef<T> implements ActorRef<T> {
             return;
         }
 
-        AbstractActor<T> actorInstance = actor.get();
+        UnTypedActor<T> actorInstance = actor;
         if (actorInstance != null && !actorInstance.isTerminated()) {
             try {
                 actorInstance.tell(message, sender);
@@ -97,8 +96,8 @@ public class LocalActorRef<T> implements ActorRef<T> {
     }
 
     private void retryMessage(T message, ActorRef sender) {
-        CompletableFuture.delayedExecutor(
-                        retryTimeout.toMillis(), TimeUnit.MILLISECONDS)
+        CompletableFuture
+                .delayedExecutor(retryTimeout.toMillis(), TimeUnit.MILLISECONDS)
                 .execute(() -> tell(message, sender));
     }
 
@@ -109,8 +108,9 @@ public class LocalActorRef<T> implements ActorRef<T> {
             return;
         }
 
-        AbstractActor<T> actorInstance = actor.get();
-        if (actorInstance != null && !actorInstance.isTerminated()) {
+        UnTypedActor<T> actorInstance = actor;
+        if (actorInstance != null
+                && !actorInstance.isTerminated()) {
             try {
                 actorInstance.tell(signal, sender);
             } catch (Exception e) {
@@ -130,7 +130,7 @@ public class LocalActorRef<T> implements ActorRef<T> {
             future.completeExceptionally(new IllegalStateException("ActorRef is no longer valid"));
             return future;
         }
-        return Objects.requireNonNull(actor.get()).ask(message, timeout);
+        return Objects.requireNonNull(actor).ask(message, timeout);
     }
 
     @Override
@@ -145,7 +145,7 @@ public class LocalActorRef<T> implements ActorRef<T> {
 
     @Override
     public boolean isTerminated() {
-        return actor == null || actor.get() == null || actor.get().isTerminated();
+        return actor == null || actor.isTerminated();
     }
 
 }

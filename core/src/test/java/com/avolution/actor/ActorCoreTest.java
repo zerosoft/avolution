@@ -2,13 +2,10 @@ package com.avolution.actor;
 
 import com.avolution.actor.core.*;
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.pattern.ASK;
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.time.Duration;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -132,7 +129,7 @@ class ActorCoreTest {
     }
 
     // 基础测试Actor
-    private static class TestActor extends AbstractActor<TestMessage> {
+    private static class TestActor extends TypedActor<TestMessage> {
         private final AtomicInteger processedCount = new AtomicInteger(0);
 
         @Override
@@ -155,7 +152,7 @@ class ActorCoreTest {
     }
 
     // 父Actor测试类
-    private static class ParentActor extends AbstractActor<TestMessage> {
+    private static class ParentActor extends TypedActor<TestMessage> {
         private final AtomicInteger childCount = new AtomicInteger(0);
         private final AtomicBoolean childrenTerminated = new AtomicBoolean(false);
 

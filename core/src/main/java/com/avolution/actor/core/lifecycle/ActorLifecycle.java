@@ -2,15 +2,16 @@ package com.avolution.actor.core.lifecycle;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
+import com.avolution.actor.core.TypedActor;
+import com.avolution.actor.core.UnTypedActor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.exception.ActorInitializationException;
 /**
- * Actor生命周期
+ * Actor 生命周期
  */
 public class ActorLifecycle {
     private static final Logger logger = LoggerFactory.getLogger(ActorLifecycle.class);
@@ -18,12 +19,11 @@ public class ActorLifecycle {
     private volatile LifecycleState state = LifecycleState.NEW;
     // Actor上下文
     private final ActorContext context;
-    // 内部生命周期钩子
-    private InternalLifecycleHook internalLifecycleHook;
 
-    public ActorLifecycle(ActorContext context) {
+    private TypedActor typedActor;
+
+    public ActorLifecycle(ActorContext context, UnTypedActor typedActor) {
         this.context = context;
-        this.internalLifecycleHook=new DefaultLifecycleHook();
     }
 
     /**
@@ -34,7 +34,6 @@ public class ActorLifecycle {
             try {
                 state = LifecycleState.STARTING;
                 // 执行Actor启动前钩子
-                internalLifecycleHook.aroundPreStart(context);
 
                 state = LifecycleState.RUNNING;
                 logger.debug("Actor started: {}", context.getPath());
@@ -55,15 +54,15 @@ public class ActorLifecycle {
             stopFuture.complete(null);
             return stopFuture;
         }
-
+        logger.debug("Stopping actor: {}", context.getPath());
         try {
             state = LifecycleState.STOPPING;
-
             // 1. 停止子Actor
             stopChildren()
                     .thenRun(() -> {
                         // 2. 执行停止回调
-                        internalLifecycleHook.aroundPostStop(context);
+//                        internalLifecycleHook.executePostStop();
+
                         state = LifecycleState.STOPPED;
                         stopFuture.complete(null);
                     })
@@ -77,7 +76,6 @@ public class ActorLifecycle {
             state = LifecycleState.FAILED;
             stopFuture.completeExceptionally(e);
         }
-
         return stopFuture;
     }
 
@@ -86,11 +84,8 @@ public class ActorLifecycle {
                 .values()
                 .stream()
                 .map(child -> context.stop(child))
-                .collect(Collectors.toList());
-
-        return CompletableFuture.allOf(
-                childStopFutures.toArray(new CompletableFuture[0])
-        );
+                .toList();
+        return CompletableFuture.allOf(childStopFutures.toArray(new CompletableFuture[0]));
     }
 
     /**
@@ -99,9 +94,7 @@ public class ActorLifecycle {
     public void restart() {
         try {
             state = LifecycleState.RESTARTING;
-            internalLifecycleHook.aroundPreRestart(context, null);
 
-            internalLifecycleHook.aroundPostRestart(context, null);
             state = LifecycleState.RUNNING;
             logger.debug("Actor restarted: {}", context.getPath());
         } catch (Exception e) {
@@ -120,6 +113,8 @@ public class ActorLifecycle {
             logger.debug("Actor suspended: {}", context.getPath());
         }
     }
+
+
     // 2. 恢复Actor
     public void resume() {
         if (state == LifecycleState.SUSPENDED) {
@@ -128,7 +123,6 @@ public class ActorLifecycle {
             logger.debug("Actor resumed: {}", context.getPath());
         }
     }
-
 
     public LifecycleState getState() {
         return state;

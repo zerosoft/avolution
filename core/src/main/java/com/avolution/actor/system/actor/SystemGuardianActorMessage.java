@@ -1,19 +1,19 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorRef;
 
 public interface SystemGuardianActorMessage {
     class StartActorMessage implements SystemGuardianActorMessage {
-        private final Class<? extends AbstractActor<?>> actorClass;
+        private final Class<? extends UnTypedActor<?>> actorClass;
         private final String name;
 
-        public StartActorMessage(Class<? extends AbstractActor<?>> actorClass, String name) {
+        public StartActorMessage(Class<? extends UnTypedActor<?>> actorClass, String name) {
             this.actorClass = actorClass;
             this.name = name;
         }
 
-        public Class<? extends AbstractActor<?>> getActorClass() {
+        public Class<? extends UnTypedActor<?>> getActorClass() {
             return actorClass;
         }
 

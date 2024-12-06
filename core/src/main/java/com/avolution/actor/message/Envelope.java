@@ -192,7 +192,7 @@ public class Envelope
 
         private  Set<String> processedActors=new HashSet<>();
 
-        private  MessageType type=MessageType.NORMAL;
+        private  MessageType type;
         private  SignalScope scope=SignalScope.SINGLE;
         private  Priority priority=Priority.NORMAL;
 

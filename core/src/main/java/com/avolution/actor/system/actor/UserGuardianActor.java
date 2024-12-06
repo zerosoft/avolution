@@ -1,6 +1,6 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 用户守护Actor
  */
-public class UserGuardianActor extends AbstractActor<UserGuardianActorMessage> {
+public class UserGuardianActor extends UnTypedActor<UserGuardianActorMessage> {
 
     private static final Logger logger = LoggerFactory.getLogger(UserGuardianActor.class);
 

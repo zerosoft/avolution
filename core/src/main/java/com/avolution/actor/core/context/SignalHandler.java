@@ -1,7 +1,6 @@
 package com.avolution.actor.core.context;
 
 import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.lifecycle.ActorLifecycle;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
@@ -12,21 +11,19 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.CompletableFuture;
 
 /**
- *
+ *   信号处理器
  */
 public class SignalHandler {
+
     private final ActorContext context;
-    private final ActorLifecycle lifecycle;
     private final Logger logger = LoggerFactory.getLogger(SignalHandler.class);
 
     /**
      * 信号处理器构造函数
      * @param context Actor上下文
-     * @param lifecycle Actor生命周期管理器
      */
-    public SignalHandler(ActorContext context, ActorLifecycle lifecycle) {
+    public SignalHandler(ActorContext context) {
         this.context = context;
-        this.lifecycle = lifecycle;
     }
 
     /**
@@ -67,8 +64,7 @@ public class SignalHandler {
      * 立即终止Actor，不等待消息处理完成
      */
     private void handleKillSignal() {
-        lifecycle.terminate();  // 立即终止生命周期
-        context.cleanup();      // 清理资源
+        context.stop();      // 清理资源
     }
 
     /**
@@ -76,8 +72,7 @@ public class SignalHandler {
      * 等待当前消息处理完成后再终止
      */
     private void handleStopSignal() {
-        lifecycle.stop(new CompletableFuture<>());       // 标记停止状态
-        context.cleanup();      // 清理资源
+        context.stop(new CompletableFuture<>());
     }
 
     /**
@@ -85,7 +80,7 @@ public class SignalHandler {
      * 处理完当前邮箱中的所有消息后终止
      */
     private void handlePoisonPill(CompletableFuture<Void> stopFuture) {
-        lifecycle.stop(stopFuture);
+        context.stop(stopFuture);
     }
 
     /**
@@ -97,10 +92,10 @@ public class SignalHandler {
         context.unwatch(child);
 
         // 如果Actor正在停止且没有存活的子Actor，则完成终止
-        if (lifecycle.isStopping() && context.getChildren().isEmpty()) {
-            lifecycle.terminate();
-            context.cleanup();
-        }
+//        if (lifecycle.isStopping() && context.getChildren().isEmpty()) {
+//            lifecycle.terminate();
+//            context.cleanup();
+//        }
     }
 
     /**
@@ -109,10 +104,10 @@ public class SignalHandler {
      * @param failedMessage 导致故障的消息
      */
     private void handleSystemFailure(Throwable cause, Envelope failedMessage) {
-        logger.error("Actor系统故障: {}", context.getSelf().path(), cause);
-        context.getActorSystem().handleSystemFailure(cause, context.getSelf());
-        lifecycle.terminate();
-        context.cleanup();
+        logger.error("Actor系统故障: {}", context.getUnTypedActor().path(), cause);
+        context.getActorSystem().handleSystemFailure(cause, context.getUnTypedActor());
+//        lifecycle.terminate();
+//        context.cleanup();
     }
 
     /**
@@ -128,11 +123,11 @@ public class SignalHandler {
                     context.getActorSystem().stop(child)
             );
 
-            lifecycle.restart();            // 重启生命周期
+//            lifecycle.restart();            // 重启生命周期
 //            context.getSelf().postRestart(cause);   // 重启后回调
 
         } catch (Exception e) {
-            logger.error("Actor重启失败: {}", context.getSelf().path(), e);
+            logger.error("Actor重启失败: {}", context.getUnTypedActor().path(), e);
             handleSystemFailure(e, null);
         }
     }
@@ -142,7 +137,8 @@ public class SignalHandler {
      * 暂停消息处理
      */
     private void handleSuspendSignal() {
-        lifecycle.suspend();
+//        lifecycle.suspend();
+        context.suspend();
     }
 
     /**
@@ -150,7 +146,8 @@ public class SignalHandler {
      * 恢复消息处理
      */
     private void handleResumeSignal() {
-        lifecycle.resume();
+        context.resume();
+//        lifecycle.resume();
     }
 
     /**
@@ -169,8 +166,8 @@ public class SignalHandler {
 
         Envelope escalateSignal = Envelope.builder()
                 .message(Signal.ESCALATE)
-                .sender(context.getSelf())
-                .recipient(parent.getSelf().getSelfRef())
+                .sender(context.getUnTypedActor())
+                .recipient(parent.getUnTypedActor().getSelfRef())
                 .priority(Priority.HIGH)
                 .scope(SignalScope.SINGLE)
                 .build();
@@ -179,6 +176,6 @@ public class SignalHandler {
         escalateSignal.addMetadata("child", child);
         escalateSignal.addMetadata("failedMessage", failedMessage);
 
-        parent.getSelf().tell(escalateSignal);
+        parent.getUnTypedActor().tell(escalateSignal);
     }
 }

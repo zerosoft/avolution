@@ -7,10 +7,10 @@ import com.avolution.actor.exception.ActorCreationException;
 
 public class Props<T> {
 
-    private final Supplier<AbstractActor<T>> factory;
+    private final Supplier<TypedActor<T>> factory;
     private final int throughput;
     
-    private Props(Supplier<AbstractActor<T>> factory, int throughput) {
+    private Props(Supplier<TypedActor<T>> factory, int throughput) {
         this.factory = factory;
         this.throughput = throughput;
     }
@@ -21,10 +21,10 @@ public class Props<T> {
      * @return
      * @param <T>
      */
-    public static <T> Props<T> create(Class<? extends AbstractActor<T>> actorClass) {
+    public static <T> Props<T> create(Class<? extends TypedActor<T>> actorClass) {
         return new Props<>(() -> {
             try {
-                Constructor<? extends AbstractActor<T>> declaredConstructor = actorClass.getDeclaredConstructor();
+                Constructor<? extends TypedActor<T>> declaredConstructor = actorClass.getDeclaredConstructor();
                 declaredConstructor.setAccessible(true);
                 return declaredConstructor.newInstance();
             } catch (Exception e) {
@@ -40,14 +40,14 @@ public class Props<T> {
      * @return
      * @param <T>
      */
-    public static <T> Props<T> create(Class<? extends AbstractActor<T>> actorClass, Object... params) {
+    public static <T> Props<T> create(Class<? extends TypedActor<T>> actorClass, Object... params) {
         return new Props<>(() -> {
             try {
                 Class<?>[] paramTypes = new Class[params.length];
                 for (int i = 0; i < params.length; i++) {
                     paramTypes[i] = params[i].getClass();
                 }
-                Constructor<? extends AbstractActor<T>> constructor = actorClass.getDeclaredConstructor(paramTypes);
+                Constructor<? extends TypedActor<T>> constructor = actorClass.getDeclaredConstructor(paramTypes);
                 constructor.setAccessible(true);
                 return constructor.newInstance(params);
             } catch (Exception e) {
@@ -56,12 +56,12 @@ public class Props<T> {
         }, 100);
     }
 
-    public static <T> Props<T> create(Supplier<AbstractActor<T>> factory) {
+    public static <T> Props<T> create(Supplier<TypedActor<T>> factory) {
         return new Props<>(factory, 100);
     }
 
 
-    public AbstractActor<T> newActor() {
+    public TypedActor<T> newActor() {
         return factory.get();
     }
 

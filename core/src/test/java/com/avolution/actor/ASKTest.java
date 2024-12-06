@@ -89,7 +89,7 @@ class ASKTest {
     }
 
     // 简单回显Actor
-    public static class EchoActor extends AbstractActor<Message> {
+    public static class EchoActor extends UnTypedActor<Message> {
         @OnReceive(Message.class)
         public void onMessage(Message msg) {
             getSender().tell(msg.getContent(), getSelfRef());
@@ -97,7 +97,7 @@ class ASKTest {
     }
 
     // 慢响应Actor
-    public static class SlowActor extends AbstractActor<Message> {
+    public static class SlowActor extends UnTypedActor<Message> {
         @OnReceive(Message.class)
         public void onMessage(Message msg) {
             try {
@@ -110,7 +110,7 @@ class ASKTest {
     }
 
     // 抛出异常的Actor
-    public static class ErrorActor extends AbstractActor<Message> {
+    public static class ErrorActor extends UnTypedActor<Message> {
         @OnReceive(Message.class)
         public void onMessage(Message msg) {
             if ("trigger-error".equals(msg.getContent())) {

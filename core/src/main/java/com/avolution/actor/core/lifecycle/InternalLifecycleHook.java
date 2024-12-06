@@ -1,30 +1,38 @@
 package com.avolution.actor.core.lifecycle;
 
-import com.avolution.actor.core.context.ActorContext;
 /**
  * 内部生命周期钩子
  */
 public interface InternalLifecycleHook {
     /**
-     * 在Actor启动之前执行
-     * @param context
-     */
-    void aroundPreStart(ActorContext context);
+     * 执行预启动
+     */ 
+    void executePreStart();
+
     /**
-     * 在Actor停止之后执行
-     * @param context
+     * 执行后停止
      */
-    void aroundPostStop(ActorContext context);
+    void executePostStop();
+
     /**
-     * 在Actor重启之前执行
-     * @param context
-     * @param reason
-     */
-    void aroundPreRestart(ActorContext context, Throwable reason);
+     * 执行预重启
+     * @param reason 导致重启的原因
+     */ 
+    void executePreRestart(Throwable reason);
+
     /**
-     * 在Actor重启之后执行
-     * @param context
-     * @param reason
+     * 执行后重启
+     * @param reason 导致重启的原因
      */
-    void aroundPostRestart(ActorContext context, Throwable reason);
+    void executePostRestart(Throwable reason);
+
+    /**
+     * 执行恢复
+     */
+    void executeResume();
+
+    /**
+     * 执行暂停
+     */
+    void executeSuspend();
 }

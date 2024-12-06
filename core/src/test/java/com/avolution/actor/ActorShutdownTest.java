@@ -21,7 +21,7 @@ public class ActorShutdownTest {
         system = ActorSystem.create("ShutdownTestSystem");
     }
 
-   public static class ShutdownTestActor extends AbstractActor<ShutdownTestActor.Message> {
+   public static class ShutdownTestActor extends UnTypedActor<ShutdownTestActor.Message> {
         private Logger logger = org.slf4j.LoggerFactory.getLogger(ShutdownTestActor.class);
 
         public interface Message {}

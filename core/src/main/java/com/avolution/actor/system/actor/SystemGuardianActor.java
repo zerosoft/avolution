@@ -1,12 +1,11 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.AbstractActor;
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.Props;
 import com.avolution.actor.core.annotation.OnReceive;
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.util.ActorPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +40,7 @@ import java.util.Set;
  * 9. 系统终止
  * 系统关闭：当系统需要关闭时，SystemGuardianActor负责执行系统级别的关闭操作，确保所有Actor和资源被正确停止和清理。
  */
-public class SystemGuardianActor extends AbstractActor<SystemGuardianActorMessage> {
+public class SystemGuardianActor extends UnTypedActor<SystemGuardianActorMessage> {
 
     private Logger logger= LoggerFactory.getLogger(SystemGuardianActor.class);
 

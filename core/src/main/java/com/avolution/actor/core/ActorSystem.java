@@ -17,7 +17,6 @@ import com.avolution.actor.exception.ActorCreationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -183,7 +182,7 @@ public class ActorSystem {
     }
 
     private <T> ActorRef<T> createAndVerifySystemActor(
-            Class<? extends AbstractActor<T>> actorClass,
+            Class<? extends TypedActor<T>> actorClass,
             String path,
             String actorName) throws ActorSystemCreationException {
 
@@ -206,10 +205,10 @@ public class ActorSystem {
         return ref;
     }
 
-    private <T> ActorRef<T> createSystemActor(Class<? extends AbstractActor<T>> actorClass,String path) throws ActorSystemCreationException {
+    private <T> ActorRef<T> createSystemActor(Class<? extends TypedActor<T>> actorClass, String path) throws ActorSystemCreationException {
         try {
             Props<T> props = Props.create(actorClass,this);
-            AbstractActor<T> actor = props.newActor();
+            TypedActor<T> actor = props.newActor();
             ActorContext context = new ActorContext(path, this, actor, null, props);
             String[] split = path.split("/");
             LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path, split[split.length-1],null);
@@ -301,7 +300,8 @@ public class ActorSystem {
         }
 
         try {
-            AbstractActor<T> actor = props.newActor();
+            TypedActor<T> actor = props.newActor();
+            UnTypedActor unTypedActor=new UnTypedActor();
             ActorContext context = new ActorContext(path, this, actor, parentContext, props);
 
             LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path,name,deadLetters);

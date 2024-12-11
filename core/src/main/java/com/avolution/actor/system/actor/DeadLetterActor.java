@@ -1,5 +1,6 @@
 package com.avolution.actor.system.actor;
 
+import com.avolution.actor.core.TypedActor;
 import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.annotation.OnReceive;
@@ -14,7 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
-public class DeadLetterActor extends UnTypedActor<IDeadLetterActorMessage> {
+public class DeadLetterActor extends TypedActor<IDeadLetterActorMessage> {
     private static final Logger log = LoggerFactory.getLogger(DeadLetterActor.class);
     private static final int MAX_DEAD_LETTERS = 1000;
     private static final int WARN_THRESHOLD = 100;
@@ -127,5 +128,10 @@ public class DeadLetterActor extends UnTypedActor<IDeadLetterActorMessage> {
         recentDeadLetters.clear();
         deadLettersByActor.clear();
         deadLettersByType.clear();
+    }
+
+    @Override
+    protected void onReceive(IDeadLetterActorMessage message) throws Exception {
+
     }
 }

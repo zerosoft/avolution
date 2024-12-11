@@ -159,8 +159,8 @@ class ActorCoreTest {
         @Override
         public void onReceive(TestMessage message) {
             if ("create-child".equals(message.getContent())) {
-                context.actorOf(Props.create(TestActor.class), "child" + childCount.incrementAndGet());
-                context.actorOf(Props.create(TestActor.class), "child" + childCount.incrementAndGet());
+                getContext().actorOf(Props.create(TestActor.class), "child" + childCount.incrementAndGet());
+                getContext().actorOf(Props.create(TestActor.class), "child" + childCount.incrementAndGet());
             }
         }
 

@@ -1,11 +1,12 @@
 package com.avolution.actor;
 
+import com.avolution.actor.core.TypedActor;
 import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.annotation.OnReceive;
 
 import java.util.concurrent.TimeUnit;
 
-public class HelloActor extends UnTypedActor<HelloActorMessage> {
+public class HelloActor extends TypedActor<HelloActorMessage> {
 
     @OnReceive(HelloActorMessage.Hello.class)
     public void handleHelloMessage(HelloActorMessage.Hello message) {
@@ -15,7 +16,7 @@ public class HelloActor extends UnTypedActor<HelloActorMessage> {
     @OnReceive(HelloActorMessage.World.class)
     public void handleWorldMessage(HelloActorMessage.World message) {
         System.out.println("World, Actor! " + message);
-        getSender().tell("OK", getSelfRef());
+        getSender().tell("OK", getSelf());
 
         getContext().getScheduler().schedule(()->{
             System.out.println("Hello, Actor! timer  " + message);
@@ -38,4 +39,8 @@ public class HelloActor extends UnTypedActor<HelloActorMessage> {
     }
 
 
+    @Override
+    protected void onReceive(HelloActorMessage message) throws Exception {
+
+    }
 }

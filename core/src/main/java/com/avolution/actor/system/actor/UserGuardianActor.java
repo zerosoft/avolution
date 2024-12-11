@@ -1,20 +1,20 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.UnTypedActor;
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.core.Props;
-import com.avolution.actor.core.annotation.OnReceive;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorSystem;
+import com.avolution.actor.core.Props;
+import com.avolution.actor.core.TypedActor;
 
 /**
  * 用户守护Actor
  */
-public class UserGuardianActor extends UnTypedActor<UserGuardianActorMessage> {
+public class UserGuardianActor extends TypedActor<UserGuardianActorMessage> {
 
     private static final Logger logger = LoggerFactory.getLogger(UserGuardianActor.class);
 
@@ -27,7 +27,6 @@ public class UserGuardianActor extends UnTypedActor<UserGuardianActorMessage> {
     }
 
     // 1. Actor 创建流程
-    @OnReceive(UserGuardianActorMessage.CreateUserActor.class)
     private void handleCreateUserActor(UserGuardianActorMessage.CreateUserActor message) {
         try {
             String actorName = message.name;
@@ -36,7 +35,7 @@ public class UserGuardianActor extends UnTypedActor<UserGuardianActorMessage> {
 
             ActorRef actorRef = actorSystem.actorOf(props, actorName, getContext());
 
-            context.watch(actorRef);
+            getContext().watch(actorRef);
 
             childActors.put(actorName, actorRef);
 
@@ -47,12 +46,28 @@ public class UserGuardianActor extends UnTypedActor<UserGuardianActorMessage> {
         }
     }
 
+
     // 2. Actor 停止流程
-    @OnReceive(UserGuardianActorMessage.StopUserActor.class)
     private void handleStopUserActor(UserGuardianActorMessage.StopUserActor message) {
         String actorName = message.name;
         childActors.remove(actorName);
     }
 
 
+    @Override
+    protected void onReceive(UserGuardianActorMessage message) throws Exception {
+        // 处理消息
+        switch (message) {
+            case UserGuardianActorMessage.CreateUserActor createUserActor:
+                handleCreateUserActor(createUserActor);
+                break;
+            case UserGuardianActorMessage.StopUserActor stopUserActor:
+                handleStopUserActor(stopUserActor);
+                break;
+            case UserGuardianActorMessage.RestartUserActor restartUserActor:
+                break;
+            default:
+                throw new AssertionError();
+        }
+    }
 }

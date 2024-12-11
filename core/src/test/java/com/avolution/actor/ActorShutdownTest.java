@@ -21,10 +21,15 @@ public class ActorShutdownTest {
         system = ActorSystem.create("ShutdownTestSystem");
     }
 
-   public static class ShutdownTestActor extends UnTypedActor<ShutdownTestActor.Message> {
+   public static class ShutdownTestActor extends TypedActor<ShutdownTestActor.Message> {
         private Logger logger = org.slf4j.LoggerFactory.getLogger(ShutdownTestActor.class);
 
-        public interface Message {}
+       @Override
+       protected void onReceive(Message message) throws Exception {
+
+       }
+
+       public interface Message {}
 
         public static class LongProcessingMessage implements Message {
             private final Duration processingTime;
@@ -48,17 +53,20 @@ public class ActorShutdownTest {
         @OnReceive(LongProcessingMessage.class)
         private void onLongProcessing(LongProcessingMessage msg) throws InterruptedException {
             messageCount.incrementAndGet();
-            System.out.println(path()+"Processing message");
+            System.out.println(getPath()+"Processing message");
         }
 
-        @OnReceive(CreateChildMessage.class)
+
+
+       @OnReceive(CreateChildMessage.class)
         private void onCreateChild(CreateChildMessage msg) {
-            ActorRef<ShutdownTestActor.Message> child = context.actorOf(Props.create(ShutdownTestActor.class),"Child");
-            getSender().tell(child, getSelfRef());
+            ActorRef<ShutdownTestActor.Message> child = getContext().actorOf(Props.create(ShutdownTestActor.class),"Child");
+            getSender().tell(child, getSelf());
         }
 
 
-        public boolean wasPostStopCalled() {
+
+       public boolean wasPostStopCalled() {
             return postStopCalled.get();
         }
 

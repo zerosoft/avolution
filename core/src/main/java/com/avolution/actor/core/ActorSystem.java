@@ -207,22 +207,26 @@ public class ActorSystem {
 
     private <T> ActorRef<T> createSystemActor(Class<? extends TypedActor<T>> actorClass, String path) throws ActorSystemCreationException {
         try {
+            // 创建Props
             Props<T> props = Props.create(actorClass,this);
-            TypedActor<T> actor = props.newActor();
-            ActorContext context = new ActorContext(path, this, actor, null, props);
-            String[] split = path.split("/");
-            LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path, split[split.length-1],null);
+            TypedActor<T> typedActor = props.newActor();
+            // 创建一个未类型化的Actor
+            UnTypedActor<T> unTypedActor=new UnTypedActor<>(typedActor);
+            // 创建上下文
+            ActorContext context = new ActorContext(path, this, unTypedActor, null, props);
             // 设置上下文
-            actor.setContext(context);
+            unTypedActor.setContext(context);
             // 设置自身引用
-            actor.setSelfRef(actorRef);
+            String[] split = path.split("/");
+            // 创建ActorRef
+            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor,path, split[split.length-1],null);
 
             context.start();
 
             // 注册系统Actor
             registerSystemActor(actorRef, context);
 
-            logger.debug("Created system actor: {}", path);
+            logger.debug("Created system typedActor: {}", path);
             return actorRef;
         } catch (Exception e) {
             logger.error("Failed to create system actor at path: {}", path, e);
@@ -300,13 +304,18 @@ public class ActorSystem {
         }
 
         try {
-            TypedActor<T> actor = props.newActor();
-            UnTypedActor unTypedActor=new UnTypedActor();
-            ActorContext context = new ActorContext(path, this, actor, parentContext, props);
-
-            LocalActorRef<T> actorRef = new LocalActorRef<>(actor,path,name,deadLetters);
-            actor.setContext(context);
-            actor.setSelfRef(actorRef);
+            // 创建Props
+            TypedActor<T> typedActor = props.newActor();
+            // 创建一个未类型化的Actor
+            UnTypedActor<T> unTypedActor=new UnTypedActor<>(typedActor);
+            // 创建上下文
+            ActorContext context = new ActorContext(path, this, unTypedActor, null, props);
+            // 设置上下文
+            unTypedActor.setContext(context);
+            // 设置自身引用
+            String[] split = path.split("/");
+            // 创建ActorRef
+            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor,path, split[split.length-1],null);
 
             context.start();
 

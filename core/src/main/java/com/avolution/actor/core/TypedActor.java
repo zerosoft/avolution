@@ -1,6 +1,7 @@
 package com.avolution.actor.core;
 
 import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +21,12 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
 
     Logger logger= LoggerFactory.getLogger(TypedActor.class);
 
-
     /**
      * 消息处理器
      */
     private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
+
+    private ActorContext actorContext;
 
     /**
      * 注册消息处理器
@@ -61,6 +63,29 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
     public void preStart() {
         ActorLifecycleHook.super.preStart();
         registerHandlers();
+    }
+
+    public void setActorContext(ActorContext actorContext) {
+        if (this.actorContext!=null){
+            throw new IllegalArgumentException("Context cannot be null");
+        }
+        this.actorContext = actorContext;
+    }
+
+    public ActorContext getContext() {
+        return actorContext;
+    }
+
+    public ActorRef getSelf() {
+        return getContext().getUnTypedActor().getSelfRef();
+    }
+
+    public ActorRef getSender() {
+        return getContext().getUnTypedActor().getSender();
+    }
+
+    public String getPath() {
+        return getContext().getPath();
     }
 
     protected abstract void onReceive(T message) throws Exception;

@@ -1,15 +1,16 @@
 package com.avolution.actor.system.actor;
 
-import com.avolution.actor.core.UnTypedActor;
-import com.avolution.actor.core.ActorRef;
-import com.avolution.actor.core.ActorSystem;
-import com.avolution.actor.core.Props;
-import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.message.Signal;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Set;
+import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorSystem;
+import com.avolution.actor.core.Props;
+import com.avolution.actor.core.TypedActor;
+import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.message.Signal;
 
 /**
  * 系统启动和初始化
@@ -40,7 +41,7 @@ import java.util.Set;
  * 9. 系统终止
  * 系统关闭：当系统需要关闭时，SystemGuardianActor负责执行系统级别的关闭操作，确保所有Actor和资源被正确停止和清理。
  */
-public class SystemGuardianActor extends UnTypedActor<SystemGuardianActorMessage> {
+public class SystemGuardianActor extends TypedActor<SystemGuardianActorMessage> {
 
     private Logger logger= LoggerFactory.getLogger(SystemGuardianActor.class);
 
@@ -50,48 +51,64 @@ public class SystemGuardianActor extends UnTypedActor<SystemGuardianActorMessage
         this.actorSystem = actorSystem;
     }
 
-    @OnReceive(SystemGuardianActorMessage.StartActorMessage.class)
     private void handleStartActor(SystemGuardianActorMessage.StartActorMessage message) {
         startActor(message.getActorClass(), message.getName());
     }
 
-    @OnReceive(SystemGuardianActorMessage.StopActorMessage.class)
     private void handleStopActor(SystemGuardianActorMessage.StopActorMessage message) {
         stopActor(message.getActorRef());
     }
 
-    @OnReceive(SystemGuardianActorMessage.RestartActorMessage.class)
     private void handleRestartActor(SystemGuardianActorMessage.RestartActorMessage message) {
         restartActor(message.getActorRef());
     }
 
     private void startActor(Class actorClass, String name) {
         // 创建并启动新的Actor
-        ActorRef actorRef = context.getActorSystem().actorOf(Props.create(actorClass), name);
+        ActorRef actorRef = getContext().getActorSystem().actorOf(Props.create(actorClass), name);
         System.out.println("Started actor: " + name);
     }
 
     private void stopActor(ActorRef<?> actorRef) {
         // 获取Actor的监视者
-        Set<String> watchers = context.getActorSystem().getRefRegistry().getWatchers(actorRef.path());
+        Set<String> watchers = getContext().getActorSystem().getRefRegistry().getWatchers(actorRef.path());
 
         // 停止Actor
-        actorRef.tell(Signal.STOP, getSelfRef());
+        actorRef.tell(Signal.STOP, getSelf());
 
         // 通知所有监视者
         watchers.forEach(watcherPath -> {
-            ActorRef<?> watcher = context.getActorSystem().getRefRegistry().getRef(watcherPath);
+            ActorRef<?> watcher = getContext().getActorSystem().getRefRegistry().getRef(watcherPath);
             if (watcher != null) {
-                watcher.tell(Signal.TERMINATED, getSelfRef());
+                watcher.tell(Signal.TERMINATED, getSelf());
             }
         });
 
         logger.info("Stopped actor: {}", actorRef.path());
     }
 
+
+
     private void restartActor(ActorRef<?> actorRef) {
 
     }
 
 
+    @Override
+    protected void onReceive(SystemGuardianActorMessage message) throws Exception {
+        // 处理消息
+        switch (message) {
+            case SystemGuardianActorMessage.StartActorMessage startActorMessage:
+                handleStartActor(startActorMessage);
+                break;
+            case SystemGuardianActorMessage.StopActorMessage stopActorMessage:
+                handleStopActor(stopActorMessage);
+                break;
+            case SystemGuardianActorMessage.RestartActorMessage restartActorMessage:
+                handleRestartActor(restartActorMessage);
+                break;
+            default:
+                throw new AssertionError();
+        }
+    }
 }

@@ -4,16 +4,15 @@ package com.avolution.actor.core;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
-import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
-import com.avolution.actor.message.Priority;
-import com.avolution.actor.pattern.ASK;
 import org.slf4j.Logger;
 
 import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.exception.ActorInitializationException;
+import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
+import com.avolution.actor.pattern.ASK;
 
 
 /**
@@ -37,6 +36,10 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     // 实现业务的TypedActor
     private TypedActor<T> typedActor;
 
+    public UnTypedActor(TypedActor<T> typedActor) {
+        this.typedActor = typedActor;
+    }
+
 
     /**
      * 处理接收到的消息
@@ -45,6 +48,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
      */
     public void onReceive(Object message) {
         try {
+            logger.debug("onReceive message:{}",message);
             typedActor.onReceive((T) message);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -80,6 +84,27 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     public ActorContext getContext() {
         return context;
     }
+
+    public void setContext(ActorContext context) {
+        if (this.context!=null){
+            throw new IllegalArgumentException("Context cannot be null");
+        }
+        this.context = context;
+        // 设置Actor上下文
+        this.typedActor.setActorContext(context);
+    }
+
+    public TypedActor<T> getTypedActor() {
+        return typedActor;
+    }
+
+    public void setTypedActor(TypedActor<T> typedActor) {
+        if (this.typedActor != null) {
+            throw new IllegalStateException("TypedActor already set");
+        }
+        this.typedActor = typedActor;
+    }
+
     /**
      * 发送消息
      * @param message 消息
@@ -91,9 +116,10 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
             throw new IllegalArgumentException("Message cannot be null");
         }
         if (!isTerminated()) {
-
+            logger.debug("tell message:{}",message);
             if (message instanceof Envelope signalEnvelope) {
                 context.tell(signalEnvelope);
+                logger.debug("tell signalEnvelope:{}",signalEnvelope);
             }else {
                 Envelope.Builder builder = Envelope.builder();
                 builder.message(message);
@@ -103,6 +129,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
                 builder.retryCount(0);
                 Envelope envelope = builder.build();
                 context.tell(envelope);
+                logger.debug("tell envelope:{}",envelope);
             }
 
         }
@@ -120,6 +147,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
         if (!isTerminated()) {
             Envelope envelope = createSignalEnvelope(signal, sender);
             tell(envelope);
+            logger.debug("tell signalEnvelope:{}",envelope);
         }
     }
 
@@ -130,6 +158,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     public void tell(Envelope envelope) {
         if (!isTerminated()) {
             context.tell(envelope);
+            logger.debug("tell envelope:{}",envelope);
         }
     }
 
@@ -186,13 +215,6 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
      */
     public <R> CompletableFuture<R> ask(T message) {
         return ask(message, Duration.ofSeconds(5)); // 默认5秒超时
-    }
-
-    public void setContext(ActorContext context) {
-        if (this.context!=null){
-            throw new IllegalArgumentException("Context cannot be null");
-        }
-        this.context = context;
     }
 
 

@@ -1,18 +1,35 @@
 package com.avolution.actor.core.context;
 
-import com.avolution.actor.core.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.ActorScheduler;
+import com.avolution.actor.core.ActorSystem;
+import com.avolution.actor.core.DefaultActorScheduler;
+import com.avolution.actor.core.IScheduler;
+import com.avolution.actor.core.Props;
+import com.avolution.actor.core.TypedActor;
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.lifecycle.ActorContextInternalLifecycleHook;
 import com.avolution.actor.core.lifecycle.ActorLifecycle;
 import com.avolution.actor.core.lifecycle.InternalLifecycleHook;
 import com.avolution.actor.lifecycle.ActorContextLifecycle;
 import com.avolution.actor.mailbox.Mailbox;
-import com.avolution.actor.message.*;
+import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.Priority;
+import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.SignalScope;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.*;
-import java.util.concurrent.*;
 
 
 /**
@@ -44,25 +61,26 @@ public class ActorContext implements ActorContextLifecycle {
 
     /**
      * 初始化Actor上下文
-     * @param path Actor路径
-     * @param system Actor系统实例
-     * @param self Actor实例
-     * @param parent 父Actor上下文
-     * @param props Actor配置属性
+     *
+     * @param path         Actor路径
+     * @param system       Actor系统实例
+     * @param unTypedActor Actor实例
+     * @param parent       父Actor上下文
+     * @param props        Actor配置属性
      */
-    public ActorContext(String path, ActorSystem system, UnTypedActor self,
-                       ActorContext parent, Props props) {
+    public ActorContext(String path, ActorSystem system, UnTypedActor unTypedActor,
+                        ActorContext parent, Props props) {
         this.path = path;
         this.system = system;
-        this.unTypedActor = self;
+        this.unTypedActor = unTypedActor;
         this.parent = parent;
         this.mailbox = new Mailbox(system, props.throughput());
         this.scheduler = new DefaultActorScheduler();
-        this.signalHandler=new SignalHandler(this);
+        this.signalHandler = new SignalHandler(this);
 
-        this.lifecycle =new ActorLifecycle(this,self);
+        this.lifecycle = new ActorLifecycle(this, unTypedActor);
         // 将 lifecycle 传给 InternalLifecycleHook
-        this.internalLifecycleHook=new ActorContextInternalLifecycleHook(this,lifecycle);
+        this.internalLifecycleHook = new ActorContextInternalLifecycleHook(this, lifecycle);
     }
 
     /**
@@ -72,10 +90,12 @@ public class ActorContext implements ActorContextLifecycle {
     public void tell(Envelope envelope) {
         if (!lifecycle.isTerminated()) {
             mailbox.enqueue(envelope);
+            // 如果邮箱中有消息，则调度处理
             if (mailbox.hasMessages()) {
                 system.dispatcher().dispatch(path, this::processMailbox);
             }
         } else {
+            // 如果Actor已终止，则作为死信处理
             handleDeadLetter(envelope);
         }
     }
@@ -98,6 +118,7 @@ public class ActorContext implements ActorContextLifecycle {
      * 按顺序处理消息，并在必要时重新调度
      */
     public void processMailbox() {
+        // 如果Actor已终止，则不处理
         if (lifecycle.isTerminated()) {
             return;
         }
@@ -117,10 +138,11 @@ public class ActorContext implements ActorContextLifecycle {
                     unTypedActor.setSender(message.getSender());
                     processMessage(message);
                 } catch (Exception e) {
+                    // 处理消息处理错误
                     handleProcessingError(e, message);
                 }
             }
-
+            // 如果邮箱中还有消息，则重新调度处理
             if (mailbox.hasMessages()) {
                 system.dispatcher().dispatch(path, this::processMailbox);
             }
@@ -128,7 +150,6 @@ public class ActorContext implements ActorContextLifecycle {
             logger.error("Error processing mailbox for actor: {}", path, e);
         }
     }
-
 
 
     /**
@@ -165,13 +186,14 @@ public class ActorContext implements ActorContextLifecycle {
 
     /**
      * 获取所有子Actor的映射
+     *
      * @return 子Actor映射表的副本
      */
     public Map<String, ActorRef> getChildren() {
-        Map<String, ActorRef> result=new HashMap<>();
+        Map<String, ActorRef> result = new HashMap<>();
         Set<String> keySets = children.keySet();
         for (String keySet : keySets) {
-            result.put(keySet,children.get(keySet));
+            result.put(keySet, children.get(keySet));
         }
         return result;
     }
@@ -181,6 +203,7 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean start() {
         try {
+            // 执行生命周期钩子
             internalLifecycleHook.executePreStart();
             return true;
         } catch (Exception e) {
@@ -192,8 +215,11 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean stop() {
         try {
+            // 创建停止Future
             CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+            // 停止Actor
             lifecycle.stop(stopFuture);
+            // 等待停止完成
             stopFuture.get(10, TimeUnit.SECONDS);
             return true;
         } catch (Exception e) {
@@ -205,6 +231,7 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean stopNow() {
         try {
+            // 执行生命周期钩子
             internalLifecycleHook.executePostStop();
             return true;
         } catch (Exception e) {
@@ -216,7 +243,9 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean restart(Throwable cause) {
         try {
+            // 执行生命周期钩子
             internalLifecycleHook.executePreRestart(cause);
+            // 执行生命周期钩子
             internalLifecycleHook.executePostRestart(cause);
             return true;
         } catch (Exception e) {
@@ -231,6 +260,7 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean resume() {
         try {
+            // 执行生命周期钩子
             internalLifecycleHook.executeResume();
             return true;
         } catch (Exception e) {
@@ -242,6 +272,7 @@ public class ActorContext implements ActorContextLifecycle {
     @Override
     public boolean suspend() {
         try {
+            // 执行生命周期钩子
             internalLifecycleHook.executeSuspend();
             return true;
         } catch (Exception e) {
@@ -252,13 +283,14 @@ public class ActorContext implements ActorContextLifecycle {
 
     /**
      * 创建子Actor
+     *
      * @param props Actor配置
-     * @param name Actor名称
+     * @param name  Actor名称
      * @return 新创建的ActorRef
      */
     public <R> ActorRef<R> actorOf(Props<R> props, String name) {
         validateChildName(name);
-        ActorRef<R> child = system.actorOf(props, name,this);
+        ActorRef<R> child = system.actorOf(props, name, this);
         children.put(name, child);
         return child;
     }
@@ -279,18 +311,19 @@ public class ActorContext implements ActorContextLifecycle {
      * 监视指定Actor，并提供自定义回调
      */
     public void watch(ActorRef<?> target, Runnable callback) {
+        // 如果目标Actor或回调为空，则不处理
         if (target == null || callback == null) {
             return;
         }
-
         // 转换为 DeathWatch 回调
-        system.getDeathWatch().watch(unTypedActor.getSelfRef(), target, (terminated, normal) -> {
-            try {
-                callback.run();
-            } catch (Exception e) {
-                logger.error("Error executing watch callback for {}", target.path(), e);
-            }
-        });
+        system.getDeathWatch()
+                .watch(unTypedActor.getSelfRef(), target, (terminated, normal) -> {
+                    try {
+                        callback.run();
+                    } catch (Exception e) {
+                        logger.error("Error executing watch callback for {}", target.path(), e);
+                    }
+                });
     }
 
     /**
@@ -298,7 +331,9 @@ public class ActorContext implements ActorContextLifecycle {
      */
     public void unwatch(ActorRef<?> target) {
         if (target != null) {
-            system.getDeathWatch().unwatch(unTypedActor.getSelfRef(), target);
+            system
+                    .getDeathWatch()
+                    .unwatch(unTypedActor.getSelfRef(), target);
         }
     }
 
@@ -350,12 +385,13 @@ public class ActorContext implements ActorContextLifecycle {
         }
     }
 
-    public CompletableFuture<Void> stop(CompletableFuture<Void> stop){
+    public CompletableFuture<Void> stop(CompletableFuture<Void> stop) {
         return lifecycle.stop(stop);
     }
 
     /**
      * 停止Actor (自己或者子类 )
+     *
      * @param actor
      * @return
      */
@@ -376,7 +412,7 @@ public class ActorContext implements ActorContextLifecycle {
                     .type(MessageType.SIGNAL)
                     .build();
             signal.addMetadata("stopFuture", stopFuture);
-
+            // 发送停止信号
             actor.tell(signal, getUnTypedActor().getSelfRef());
 
             return stopFuture.orTimeout(10, TimeUnit.SECONDS)

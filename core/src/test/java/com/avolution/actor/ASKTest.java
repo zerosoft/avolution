@@ -89,20 +89,22 @@ class ASKTest {
     }
 
     // 简单回显Actor
-    public static class EchoActor extends UnTypedActor<Message> {
-        @OnReceive(Message.class)
-        public void onMessage(Message msg) {
-            getSender().tell(msg.getContent(), getSelfRef());
+    public static class EchoActor extends TypedActor<Message> {
+
+        @Override
+        protected void onReceive(Message message) throws Exception {
+            getSender().tell(message.getContent(), getSelf());
         }
     }
 
     // 慢响应Actor
-    public static class SlowActor extends UnTypedActor<Message> {
-        @OnReceive(Message.class)
-        public void onMessage(Message msg) {
+    public static class SlowActor extends TypedActor<Message> {
+
+        @Override
+        protected void onReceive(Message message) throws Exception {
             try {
                 Thread.sleep(500);
-                getSender().tell(msg.getContent(), getSelfRef());
+                getSender().tell(message.getContent(), getSelf());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -110,13 +112,13 @@ class ASKTest {
     }
 
     // 抛出异常的Actor
-    public static class ErrorActor extends UnTypedActor<Message> {
-        @OnReceive(Message.class)
-        public void onMessage(Message msg) {
-            if ("trigger-error".equals(msg.getContent())) {
+    public static class ErrorActor extends TypedActor<Message> {
+        @Override
+        protected void onReceive(Message message) throws Exception {
+            if ("trigger-error".equals(message.getContent())) {
                 throw new RuntimeException("Test error");
             }
-            getSender().tell(msg.getContent(), getSelfRef());
+            getSender().tell(message.getContent(), getSelf());
         }
     }
 }

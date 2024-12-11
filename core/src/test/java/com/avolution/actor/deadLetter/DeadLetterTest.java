@@ -28,17 +28,10 @@ public class DeadLetterTest {
         }
     }
 
-   public static class WatcherActor extends UnTypedActor<Object> {
+   public static class WatcherActor extends TypedActor<Object> {
         private final AtomicBoolean terminatedReceived = new AtomicBoolean(false);
         private final AtomicInteger deadLetterCount = new AtomicInteger(0);
         private final CompletableFuture<Void> terminationFuture = new CompletableFuture<>();
-
-        @OnReceive(Object.class)
-        private void onMessage(Object msg) {
-                terminatedReceived.set(true);
-                terminationFuture.complete(null);
-
-        }
 
         public boolean wasTerminatedReceived() {
             return terminatedReceived.get();
@@ -51,7 +44,13 @@ public class DeadLetterTest {
         public CompletableFuture<Void> getTerminationFuture() {
             return terminationFuture;
         }
-    }
+
+       @Override
+       protected void onReceive(Object message) throws Exception {
+           terminatedReceived.set(true);
+           terminationFuture.complete(null);
+       }
+   }
 
     @Test
     void testDeadLetterOnActorTermination() throws Exception {

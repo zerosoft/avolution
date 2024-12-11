@@ -174,7 +174,7 @@ public class ActorStopTest {
         }
     }
 
-    private static class ParentActor extends UnTypedActor<Object> {
+    private static class ParentActor extends TypedActor<Object> {
         private final List<ActorRef<String>> children = new ArrayList<>();
 
         @Override
@@ -183,7 +183,7 @@ public class ActorStopTest {
                 CreateChild createChild = (CreateChild) message;
                 Props<Object> childProps = Props.create(ParentActor.class);
                 ActorRef<Object> stringActorRef = getContext().actorOf(childProps, createChild.name);
-                getSender().tell(stringActorRef,getSelfRef());
+                getSender().tell(stringActorRef,getSelf());
             }
         }
 

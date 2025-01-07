@@ -1,11 +1,12 @@
 package com.avolution.actor.core;
 
-
-import com.avolution.actor.message.Signal;
-import com.avolution.actor.system.NoSender;
-
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.context.ActorContextView;
+import com.avolution.actor.message.Signal;
+import com.avolution.actor.system.NoSender;
 
 /**
  * Actor引用接口
@@ -58,6 +59,20 @@ public interface ActorRef<T> {
      * @return 是否已终止
      */
     boolean isTerminated();
+
+    /**
+     * 获取Actor的上下文
+     * @return Actor上下文
+     */
+    ActorContext getContext();
+
+    /**
+     * 获取Actor的上下文视图
+     * @return Actor上下文视图
+     */
+    default ActorContextView getContextView() {
+        return new ActorContextView(getContext());
+    }
 
     /**
      * 获取空的发送者引用

@@ -1,151 +1,67 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.message.MessageType;
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.context.ActorContextView;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 当前JVM的Actor引用
- * @param <T>
+ * 本地Actor引用
+ * 代表本地JVM中的Actor实例
  */
 public class LocalActorRef<T> implements ActorRef<T> {
+    private final UnTypedActor<T> unTypedActor;
+    private final String path;
+    private final String name;
+    private final ActorRef<IDeadLetterActorMessage> deadLetters;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LocalActorRef.class);
-    // 弱引用，避免循环引用
-    private UnTypedActor<T> actor;
-    // 原始路径
-    private final String originalPath;
-    // 原始名称
-    private final String originalName;
-    // 死信Actor
-    private ActorRef<IDeadLetterActorMessage> deadLetters;
-
-    private final AtomicInteger retryCount;
-    private final Duration retryTimeout;
-
-    public LocalActorRef(UnTypedActor<T> actor, String originalPath, String originalName, ActorRef<IDeadLetterActorMessage> deadLetters) {
-        this.actor = actor;
-        this.originalPath =originalPath;
-        this.originalName = originalName;
-        this.deadLetters =deadLetters;
-        this.retryCount = new AtomicInteger(0);
-        this.retryTimeout = Duration.ofSeconds(5);
-    }
-
-    private void handleDeadLetter(Object message, ActorRef sender, MessageType messageType) {
-        if (deadLetters == null) {
-            LOGGER.warn("Dead letter actor not available, message dropped: {}", message);
-            return;
-        }
-
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("failureReason", "Actor terminated or unavailable");
-        metadata.put("originalSender", sender.path());
-        metadata.put("retryCount", retryCount.get());
-        metadata.put("timestamp", System.currentTimeMillis());
-
-        IDeadLetterActorMessage.DeadLetter deadLetter = new IDeadLetterActorMessage.DeadLetter(
-                message,
-                sender.path(),
-                originalPath,
-                LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                messageType,
-                retryCount.get(),
-                metadata
-        );
-
-        deadLetters.tell(deadLetter, ActorRef.noSender());
-        LOGGER.warn("Message sent to dead letters: {}", deadLetter);
+    public LocalActorRef(UnTypedActor<T> unTypedActor, String path, String name, ActorRef<IDeadLetterActorMessage> deadLetters) {
+        this.unTypedActor = unTypedActor;
+        this.path = path;
+        this.name = name;
+        this.deadLetters = deadLetters;
     }
 
     @Override
     public void tell(T message, ActorRef sender) {
-        if (isTerminated()) {
-            handleDeadLetter(message, sender, MessageType.NORMAL);
-            return;
-        }
-
-        UnTypedActor<T> actorInstance = actor;
-        if (actorInstance != null && !actorInstance.isTerminated()) {
-            try {
-                actorInstance.tell(message, sender);
-                retryCount.set(0); // 重置重试计数
-            } catch (Exception e) {
-                LOGGER.error("Error telling message to actor: {}", originalPath, e);
-                if (retryCount.incrementAndGet() <= 3) {
-                    retryMessage(message, sender);
-                } else {
-                    handleDeadLetter(message, sender, MessageType.NORMAL);
-                }
-            }
-        } else {
-            handleDeadLetter(message, sender, MessageType.NORMAL);
-        }
-    }
-
-    private void retryMessage(T message, ActorRef sender) {
-        CompletableFuture
-                .delayedExecutor(retryTimeout.toMillis(), TimeUnit.MILLISECONDS)
-                .execute(() -> tell(message, sender));
+        unTypedActor.tell(message, sender);
     }
 
     @Override
     public void tell(Signal signal, ActorRef sender) {
-        if (isTerminated()) {
-            handleDeadLetter(signal, sender, MessageType.SIGNAL);
-            return;
-        }
-
-        UnTypedActor<T> actorInstance = actor;
-        if (actorInstance != null
-                && !actorInstance.isTerminated()) {
-            try {
-                actorInstance.tell(signal, sender);
-            } catch (Exception e) {
-                LOGGER.error("Error telling signal to actor: {}", originalPath, e);
-                handleDeadLetter(signal, sender, MessageType.SIGNAL);
-            }
-        } else {
-            handleDeadLetter(signal, sender, MessageType.SIGNAL);
-        }
+        unTypedActor.tell(signal, sender);
     }
 
     @Override
     public <R> CompletableFuture<R> ask(T message, Duration timeout) {
-        if (isTerminated()) {
-            CompletableFuture<R> future = new CompletableFuture<>();
-            handleDeadLetter(message, ActorRef.noSender(), MessageType.NORMAL);
-            future.completeExceptionally(new IllegalStateException("ActorRef is no longer valid"));
-            return future;
-        }
-        return Objects.requireNonNull(actor).ask(message, timeout);
+        return unTypedActor.ask(message, timeout);
     }
 
     @Override
     public String path() {
-        return originalPath;
+        return path;
     }
 
     @Override
     public String name() {
-        return originalName;
+        return name;
     }
 
     @Override
     public boolean isTerminated() {
-        return actor == null || actor.isTerminated();
+        return unTypedActor.isTerminated();
     }
 
+    @Override
+    public ActorContext getContext() {
+        return unTypedActor.getContext();
+    }
+
+    @Override
+    public ActorContextView getContextView() {
+        return new ActorContextView(getContext());
+    }
 }

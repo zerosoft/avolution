@@ -68,17 +68,25 @@ public class ActorRefRegistry {
         lock.writeLock().lock();
         try {
             String path = ref.path();
+            // 检查是否已经注册
+            if (pathToRef.containsKey(path)) {
+                logger.warn("Actor already registered: {}", path);
+                return;
+            }
+            
+            // 注册Actor引用
             pathToRef.put(path, ref);
 
             // 建立父子关系
             if (parentPath != null) {
-                parentToChildren.computeIfAbsent(parentPath, k -> ConcurrentHashMap.newKeySet())
-                        .add(path);
+                Set<String> children = parentToChildren.computeIfAbsent(parentPath, k -> ConcurrentHashMap.newKeySet());
+                children.add(path);
+                logger.debug("Established parent-child relationship: {} -> {}", parentPath, path);
             }
 
             // 刷新缓存
             refCache.put(path, ref);
-            logger.debug("Registered actor: {}", path);
+            logger.debug("Registered actor: {} with parent: {}", path, parentPath);
         } finally {
             lock.writeLock().unlock();
         }
@@ -245,10 +253,7 @@ public class ActorRefRegistry {
      */
     private String getParentPath(String path) {
         int lastSlash = path.lastIndexOf('/');
-        if (lastSlash > 0) {
-            return path.substring(0, lastSlash);
-        }
-        return null;
+        return lastSlash > 0 ? path.substring(0, lastSlash) : null;
     }
     /**
      * 清理监视关系

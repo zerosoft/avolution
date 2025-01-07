@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 
 import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.context.ActorContextView;
 import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
@@ -68,16 +69,20 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
         this.sender = sender;
     }
 
-    public void setSelfRef(LocalActorRef<T> ref) {
-        if (this.selfRef != null) {
-            throw new IllegalStateException("Self reference already set");
-        }
-        this.selfRef = ref;
+    /**
+     * 设置Actor引用
+     */
+    public void setSelfRef(LocalActorRef<T> selfRef) {
+        this.selfRef = selfRef;
     }
 
-    public ActorRef<T> getSelfRef() {
+    /**
+     * 获取Actor引用
+     */
+    public LocalActorRef<T> getSelfRef() {
         return selfRef;
     }
+
     /**
      * 获取Actor上下文
      */
@@ -85,13 +90,11 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
         return context;
     }
 
+    /**
+     * 设置Actor上下文
+     */
     public void setContext(ActorContext context) {
-        if (this.context!=null){
-            throw new IllegalArgumentException("Context cannot be null");
-        }
         this.context = context;
-        // 设置Actor上下文
-        this.typedActor.setActorContext(context);
     }
 
     public TypedActor<T> getTypedActor() {
@@ -192,6 +195,11 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     @Override
     public boolean isTerminated() {
         return context.getLifecycle().isTerminated();
+    }
+
+    @Override
+    public ActorContextView getContextView() {
+        return new ActorContextView(context);
     }
 
     /**

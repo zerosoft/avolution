@@ -1,16 +1,17 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.avolution.actor.core.annotation.OnReceive;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
 
 
 /**
@@ -19,7 +20,7 @@ import java.util.function.Consumer;
  */
 public abstract class TypedActor<T> implements ActorLifecycleHook {
 
-    Logger logger= LoggerFactory.getLogger(TypedActor.class);
+    Logger logger = LoggerFactory.getLogger(TypedActor.class);
 
     /**
      * 消息处理器
@@ -45,7 +46,8 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
 
     /**
      * 调用消息处理器
-     * @param method 方法
+     *
+     * @param method  方法
      * @param message 消息
      */
     private void invokeHandler(Method method, Object message) {
@@ -65,13 +67,16 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
         registerHandlers();
     }
 
-    public void setActorContext(ActorContext actorContext) {
-        if (this.actorContext!=null){
-            throw new IllegalArgumentException("Context cannot be null");
-        }
-        this.actorContext = actorContext;
+    /**
+     * 设置Actor上下文
+     */
+    public void setActorContext(ActorContext context) {
+        this.actorContext = context;
     }
 
+    /**
+     * 获取Actor上下文
+     */
     public ActorContext getContext() {
         return actorContext;
     }

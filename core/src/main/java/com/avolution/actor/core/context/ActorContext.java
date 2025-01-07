@@ -1,8 +1,7 @@
 package com.avolution.actor.core.context;
 
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +16,6 @@ import com.avolution.actor.core.ActorSystem;
 import com.avolution.actor.core.DefaultActorScheduler;
 import com.avolution.actor.core.IScheduler;
 import com.avolution.actor.core.Props;
-import com.avolution.actor.core.TypedActor;
 import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.lifecycle.ActorContextInternalLifecycleHook;
 import com.avolution.actor.core.lifecycle.ActorLifecycle;
@@ -187,17 +185,20 @@ public class ActorContext implements ActorContextLifecycle {
     /**
      * 获取所有子Actor的映射
      *
-     * @return 子Actor映射表的副本
+     * @return 子Actor映射表
      */
-    public Map<String, ActorRef> getChildren() {
-        Map<String, ActorRef> result = new HashMap<>();
-        Set<String> keySets = children.keySet();
-        for (String keySet : keySets) {
-            result.put(keySet, children.get(keySet));
-        }
-        return result;
+    public Map<String, ActorRef<?>> getChildren() {
+        return children;
     }
 
+    /**
+     * 获取所有子Actor的只读映射
+     *
+     * @return 子Actor只读映射表
+     */
+    public Map<String, ActorRef<?>> getChildrenView() {
+        return Collections.unmodifiableMap(children);
+    }
 
     // 生命周期管理方法实现
     @Override
@@ -283,18 +284,10 @@ public class ActorContext implements ActorContextLifecycle {
 
     /**
      * 创建子Actor
-     *
-     * @param props Actor配置
-     * @param name  Actor名称
-     * @return 新创建的ActorRef
      */
-    public <R> ActorRef<R> actorOf(Props<R> props, String name) {
-        validateChildName(name);
-        ActorRef<R> child = system.actorOf(props, name, this);
-        children.put(name, child);
-        return child;
+    public <T> ActorRef<T> actorOf(Props<T> props, String name) {
+        return system.actorOf(props, name, this);
     }
-
 
     /**
      * 监视指定Actor
@@ -382,6 +375,8 @@ public class ActorContext implements ActorContextLifecycle {
     public void removeChild(ActorRef<?> child) {
         if (child != null) {
             children.remove(child.name());
+            // 从系统中注销
+            system.unregisterActor(child.path());
         }
     }
 

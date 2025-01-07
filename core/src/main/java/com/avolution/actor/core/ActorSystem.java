@@ -1,25 +1,39 @@
 package com.avolution.actor.core;
 
-import com.avolution.actor.concurrent.VirtualThreadScheduler;
-import com.avolution.actor.core.context.ActorContextManager;
-import com.avolution.actor.core.context.ActorRefRegistry;
-import com.avolution.actor.dispatch.Dispatcher;
-import com.avolution.actor.exception.ActorInitializationException;
-import com.avolution.actor.exception.ActorSystemCreationException;
-import com.avolution.actor.exception.SystemFailureException;
-import com.avolution.actor.core.lifecycle.LifecycleState;
-import com.avolution.actor.message.*;
-import com.avolution.actor.stream.EventStream;
-import com.avolution.actor.supervision.DeathWatch;
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.system.actor.*;
-import com.avolution.actor.exception.ActorCreationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
+import com.avolution.actor.concurrent.VirtualThreadScheduler;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.context.ActorContextManager;
+import com.avolution.actor.core.context.ActorRefRegistry;
+import com.avolution.actor.core.lifecycle.LifecycleState;
+import com.avolution.actor.dispatch.Dispatcher;
+import com.avolution.actor.exception.ActorCreationException;
+import com.avolution.actor.exception.ActorInitializationException;
+import com.avolution.actor.exception.ActorSystemCreationException;
+import com.avolution.actor.exception.SystemFailureException;
+import com.avolution.actor.message.Envelope;
+import com.avolution.actor.message.MessageType;
+import com.avolution.actor.message.Priority;
+import com.avolution.actor.message.Signal;
+import com.avolution.actor.message.SignalScope;
+import com.avolution.actor.stream.EventStream;
+import com.avolution.actor.supervision.DeathWatch;
+import com.avolution.actor.system.actor.DeadLetterActor;
+import com.avolution.actor.system.actor.IDeadLetterActorMessage;
+import com.avolution.actor.system.actor.SystemGuardianActor;
+import com.avolution.actor.system.actor.SystemGuardianActorMessage;
+import com.avolution.actor.system.actor.UserGuardianActor;
+import com.avolution.actor.system.actor.UserGuardianActorMessage;
 
 /**
  * Actor系统的核心实现类，负责管理整个Actor生态系统
@@ -208,25 +222,37 @@ public class ActorSystem {
     private <T> ActorRef<T> createSystemActor(Class<? extends TypedActor<T>> actorClass, String path) throws ActorSystemCreationException {
         try {
             // 创建Props
-            Props<T> props = Props.create(actorClass,this);
+            Props<T> props = Props.create(actorClass, this);
             TypedActor<T> typedActor = props.newActor();
+            
             // 创建一个未类型化的Actor
-            UnTypedActor<T> unTypedActor=new UnTypedActor<>(typedActor);
+            UnTypedActor<T> unTypedActor = new UnTypedActor<>(typedActor);
+            
             // 创建上下文
             ActorContext context = new ActorContext(path, this, unTypedActor, null, props);
+            
             // 设置上下文
             unTypedActor.setContext(context);
-            // 设置自身引用
+            typedActor.setActorContext(context);
+            
+            // 获取Actor名称
             String[] split = path.split("/");
+            String name = split[split.length-1];
+            
             // 创建ActorRef
-            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor,path, split[split.length-1],null);
+            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor, path, name, deadLetters);
+            // 设置Actor引用
+            unTypedActor.setSelfRef(actorRef);
 
-            context.start();
+            // 启动Actor
+            if (!context.start()) {
+                throw new ActorSystemCreationException("Failed to start system actor: " + path);
+            }
 
             // 注册系统Actor
             registerSystemActor(actorRef, context);
 
-            logger.debug("Created system typedActor: {}", path);
+            logger.debug("Created system actor: {}", path);
             return actorRef;
         } catch (Exception e) {
             logger.error("Failed to create system actor at path: {}", path, e);
@@ -290,7 +316,6 @@ public class ActorSystem {
 
         validateActorName(name);
 
-
         // 2. 处理顶级Actor创建
         if (parentContext == null) {
             return createViaUserGuardian(props, name);
@@ -307,19 +332,29 @@ public class ActorSystem {
             // 创建Props
             TypedActor<T> typedActor = props.newActor();
             // 创建一个未类型化的Actor
-            UnTypedActor<T> unTypedActor=new UnTypedActor<>(typedActor);
-            // 创建上下文
-            ActorContext context = new ActorContext(path, this, unTypedActor, null, props);
+            UnTypedActor<T> unTypedActor = new UnTypedActor<>(typedActor);
+            // 创建上下文，确保设置正确的父上下文
+            ActorContext context = new ActorContext(path, this, unTypedActor, parentContext, props);
             // 设置上下文
             unTypedActor.setContext(context);
-            // 设置自身引用
-            String[] split = path.split("/");
+            typedActor.setActorContext(context);
             // 创建ActorRef
-            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor,path, split[split.length-1],null);
+            LocalActorRef<T> actorRef = new LocalActorRef<>(unTypedActor, path, name, deadLetters);
+            // 设置Actor引用
+            unTypedActor.setSelfRef(actorRef);
 
-            context.start();
+            // 启动Actor
+            if (!context.start()) {
+                throw new ActorCreationException("Failed to start actor: " + name);
+            }
 
-            logger.debug("Created actor: {}", path);
+            // 注册Actor
+            registerActor(actorRef, context);
+
+            // 将子Actor添加到父Actor的子列表中
+            parentContext.getChildren().put(name, actorRef);
+
+            logger.debug("Created actor: {} with parent: {}", path, parentContext.getPath());
             return actorRef;
         } catch (Exception e) {
             logger.error("Failed to create actor: {}", name, e);
@@ -337,10 +372,10 @@ public class ActorSystem {
     private <T> ActorRef<T> createViaUserGuardian(Props<T> props, String name) {
         CompletableFuture<ActorRef> future = new CompletableFuture<>();
         // 通过用户守护者创建Actor
-        userGuardian.tell(new UserGuardianActorMessage.CreateUserActor(props, name, future),ActorRef.noSender());
+        userGuardian.tell(new UserGuardianActorMessage.CreateUserActor(props, name, future), ActorRef.noSender());
         try {
-            // 等待创建完成，设置超时
-            return future.get(5, TimeUnit.SECONDS);
+            // 等待创建完成，设置超时为1秒
+            return future.get(1, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             throw new ActorCreationException("Actor creation timeout: " + name);
         } catch (Exception e) {
@@ -587,13 +622,29 @@ public class ActorSystem {
         return terminationFuture;
     }
 
+    /**
+     * 注册Actor到系统
+     * @param ref Actor引用
+     * @param context Actor上下文
+     */
     public void registerActor(ActorRef<?> ref, ActorContext context) {
-        refRegistry.register(ref,context.getParent()==null?"/usr":context.getParent().getPath());
+        // 获取父路径
+        String parentPath = context.getParent() == null ? "/user" : context.getParent().getPath();
+        // 注册到引用注册表
+        refRegistry.register(ref, parentPath);
+        // 注册到上下文管理器
         contextManager.addContext(ref.path(), context);
+        logger.debug("Registered actor: {} with parent: {}", ref.path(), parentPath);
     }
 
+    /**
+     * 从系统中注销Actor
+     * @param path Actor路径
+     */
     public void unregisterActor(String path) {
+        // 从引用注册表中注销
         refRegistry.unregister(path);
+        // 从上下文管理器中移除
         contextManager.removeContext(path);
         logger.debug("Unregistered actor: {}", path);
     }

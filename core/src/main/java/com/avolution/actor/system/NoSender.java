@@ -2,6 +2,8 @@ package com.avolution.actor.system;
 
 
 import com.avolution.actor.core.ActorRef;
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.context.ActorContextView;
 import com.avolution.actor.message.Signal;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -50,6 +52,16 @@ public final class NoSender implements ActorRef<Object> {
     @Override
     public boolean isTerminated() {
         return true;
+    }
+
+    @Override
+    public ActorContext getContext() {
+        return null;
+    }
+
+    @Override
+    public ActorContextView getContextView() {
+        return null;
     }
 
     @Override

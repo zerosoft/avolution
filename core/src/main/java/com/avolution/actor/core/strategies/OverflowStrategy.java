@@ -1,4 +1,4 @@
-package com.avolution.actor.config.strategies;
+package com.avolution.actor.core.strategies;
 
 public enum OverflowStrategy {
     DROP_NEW,       // 丢弃新消息

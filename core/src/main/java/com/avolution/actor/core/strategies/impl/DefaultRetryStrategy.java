@@ -1,6 +1,6 @@
-package com.avolution.actor.config.strategies.impl;
+package com.avolution.actor.core.strategies.impl;
 
-import com.avolution.actor.config.strategies.RetryStrategy;
+import com.avolution.actor.core.strategies.RetryStrategy;
 import com.avolution.actor.message.Envelope;
 
 import java.time.Duration;

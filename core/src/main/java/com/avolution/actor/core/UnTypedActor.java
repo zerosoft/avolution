@@ -1,8 +1,8 @@
 package com.avolution.actor.core;
 
-
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 
@@ -14,6 +14,13 @@ import com.avolution.actor.message.MessageType;
 import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.pattern.ASK;
+import com.avolution.actor.core.strategies.PriorityStrategy;
+import com.avolution.actor.core.strategies.RetryStrategy;
+import com.avolution.actor.core.strategies.StashStrategy;
+import com.avolution.actor.core.strategies.impl.DefaultPriorityStrategy;
+import com.avolution.actor.core.strategies.impl.DefaultRetryStrategy;
+import com.avolution.actor.core.strategies.impl.DefaultStashStrategy;
+import com.avolution.actor.message.ActorFailure;
 
 
 /**
@@ -37,8 +44,17 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     // 实现业务的TypedActor
     private TypedActor<T> typedActor;
 
+    // 添加策略相关属性
+    private final PriorityStrategy priorityStrategy;
+    private final RetryStrategy retryStrategy; 
+    private final StashStrategy stashStrategy;
+
     public UnTypedActor(TypedActor<T> typedActor) {
         this.typedActor = typedActor;
+        // 初始化默认策略
+        this.priorityStrategy = new DefaultPriorityStrategy();
+        this.retryStrategy = new DefaultRetryStrategy();
+        this.stashStrategy = new DefaultStashStrategy();
     }
 
 
@@ -254,5 +270,129 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     @Override
     public void preSuspend() {
         ActorLifecycleHook.super.preSuspend();
+    }
+
+    // 处理消息的主要方法
+    protected void processMessage(Envelope envelope) {
+        try {
+            // 1. 检查是否需要暂存消息
+            if (stashStrategy.shouldStash(envelope)) {
+                context.getMailbox().stash(envelope);
+                logger.debug("Message stashed: {}", envelope);
+                return;
+            }
+
+            // 2. 设置消息优先级
+            Priority priority = priorityStrategy.getPriority(envelope);
+            envelope.setPriority(priority);
+            
+            // 3. 处理消息
+            if (envelope.getMessageType() == MessageType.SIGNAL) {
+                handleSignal(envelope);
+            } else {
+                typedActor.receive(envelope);
+            }
+            
+            // 4. 检查是否可以取出暂存的消息
+            if (stashStrategy.shouldUnstash(envelope)) {
+                Envelope unstashed = context.getMailbox().unstashOne();
+                if (unstashed != null) {
+                    logger.debug("Message unstashed: {}", unstashed);
+                    processMessage(unstashed); // 递归处理取出的消息
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error processing message: {}", envelope, e);
+            handleMessageFailure(envelope, e);
+        }
+    }
+
+    // 处理消息失败的方法
+    private void handleMessageFailure(Envelope envelope, Exception e) {
+        try {
+            if (retryStrategy.shouldRetry(envelope)) {
+                handleRetry(envelope, e);
+            } else {
+                handleFinalFailure(envelope, e);
+            }
+        } catch (Exception ex) {
+            logger.error("Error handling message failure", ex);
+            context.getActorSystem().handleSystemFailure(ex, this);
+        }
+    }
+
+    private void handleRetry(Envelope envelope, Exception e) {
+        // 增加重试次数并更新信封
+        envelope.incrementRetryCount();
+        envelope.setLastError(e);
+        
+        // 计算延迟时间
+        Duration delay = retryStrategy.getRetryDelay(envelope.getRetryCount());
+        
+        logger.debug("Scheduling retry #{} for message: {} after {}ms", 
+            envelope.getRetryCount(), envelope, delay.toMillis());
+            
+        // 调度重试
+        context.getActorSystem().getScheduler().schedule(
+            () -> {
+                if (!isTerminated()) {
+                    context.tell(envelope);
+                }
+            },
+            delay.toMillis(),
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void handleFinalFailure(Envelope envelope, Exception e) {
+        logger.error("Message processing failed after {} retries: {}", 
+            envelope.getRetryCount(), envelope);
+            
+        // 创建失败消息
+        ActorFailure failure = new ActorFailure(this, e, envelope);
+        
+        // 通知监督者
+        Envelope failureEnvelope = Envelope.builder()
+            .type(MessageType.SYSTEM)
+            .message(failure)
+            .priority(Priority.HIGH)
+            .sender(getSelfRef())
+            .recipient(context.getParent().getUnTypedActor())
+            .build();
+            
+        context.getParent().tell(failureEnvelope, getSelfRef());
+        
+        // 向系统报告失败
+        context.getActorSystem().handleSystemFailure(e, this);
+    }
+
+    // 新增：处理信号消息的辅助方法
+    private void handleSignal(Envelope envelope) {
+        Signal signal = (Signal) envelope.getMessage();
+        switch (signal) {
+            case STOP -> preStop();
+            case RESTART -> {
+                Throwable reason = envelope.getLastError();
+                preRestart(reason);
+                postRestart(reason);
+            }
+            case SUSPEND -> preSuspend();
+            case RESUME -> preResume();
+            default -> logger.warn("Unknown signal received: {}", signal);
+        }
+    }
+
+    // Getter方法
+    public PriorityStrategy getPriorityStrategy() {
+        return priorityStrategy;
+    }
+
+    public RetryStrategy getRetryStrategy() {
+        return retryStrategy;
+    }
+
+    public StashStrategy getStashStrategy() {
+        return stashStrategy;
     }
 }

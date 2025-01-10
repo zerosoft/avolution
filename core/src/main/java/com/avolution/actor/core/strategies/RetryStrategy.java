@@ -1,4 +1,4 @@
-package com.avolution.actor.config.strategies;
+package com.avolution.actor.core.strategies;
 
 import com.avolution.actor.message.Envelope;
 

@@ -89,7 +89,7 @@ public class ActorContext implements ActorContextLifecycle {
         if (!lifecycle.isTerminated()) {
             mailbox.enqueue(envelope);
             // 如果邮箱中有消息，则调度处理
-            if (mailbox.hasMessages()) {
+            if (!mailbox.isEmpty()) {
                 system.dispatcher().dispatch(path, this::processMailbox);
             }
         } else {

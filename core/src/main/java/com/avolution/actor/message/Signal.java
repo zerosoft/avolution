@@ -1,5 +1,6 @@
 package com.avolution.actor.message;
 
+import com.avolution.actor.core.ActorRef;
 
 /**
  * Actor系统信号枚举
@@ -118,6 +119,27 @@ public enum Signal {
      */
     public boolean isQuerySignal() {
         return type == SignalType.QUERY;
+    }
+
+    /**
+     * 失败信号：表示Actor执行过程中发生的错误
+     */
+    public static class Failure {
+        private final ActorRef<?> child;
+        private final Throwable cause;
+
+        public Failure(ActorRef<?> child, Throwable cause) {
+            this.child = child;
+            this.cause = cause;
+        }
+
+        public ActorRef<?> getChild() {
+            return child;
+        }
+
+        public Throwable getCause() {
+            return cause;
+        }
     }
 
 }

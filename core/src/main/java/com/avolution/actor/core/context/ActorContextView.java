@@ -6,6 +6,7 @@ import java.util.Set;
 
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.core.ActorSystem;
+import com.avolution.actor.core.Props;
 
 /**
  * Actor上下文的只读视图
@@ -35,27 +36,29 @@ public class ActorContextView {
     /**
      * 获取父Actor引用
      */
-    public Optional<ActorRef<?>> getParent() {
+    public Optional<ActorRef<Object>> getParent() {
         ActorContext parent = context.getParent();
         if (parent == null) {
             return Optional.empty();
         }
         // 确保返回父Actor的引用
-        return Optional.of(parent.getUnTypedActor().getSelfRef());
+        return Optional.of((ActorRef<Object>) parent.getUnTypedActor().getSelfRef());
     }
 
     /**
      * 获取子Actor引用集合
      */
-    public Set<ActorRef<?>> getChildren() {
-        return new HashSet<>(context.getChildrenView().values());
+    public Set<ActorRef<Object>> getChildren() {
+        Set<ActorRef<Object>> children = new HashSet<>();
+        context.getChildrenView().values().forEach(ref -> children.add((ActorRef<Object>) ref));
+        return children;
     }
 
     /**
      * 查找指定名称的子Actor
      */
-    public Optional<ActorRef<?>> findChild(String name) {
-        return Optional.ofNullable(context.getChildrenView().get(name));
+    public Optional<ActorRef<Object>> findChild(String name) {
+        return Optional.ofNullable((ActorRef<Object>) context.getChildrenView().get(name));
     }
 
     /**
@@ -63,5 +66,24 @@ public class ActorContextView {
      */
     public boolean hasChild(String name) {
         return context.getChildrenView().containsKey(name);
+    }
+
+    /**
+     * 创建子Actor
+     * @param props Actor属性
+     * @param name Actor名称
+     * @return 子Actor引用
+     */
+    public <T> ActorRef<T> actorOf(Props<T> props, String name) {
+        return context.actorOf(props, name);
+    }
+
+    /**
+     * 获取指定名称的子Actor
+     * @param name Actor名称
+     * @return 子Actor引用
+     */
+    public ActorRef<Object> getChild(String name) {
+        return (ActorRef<Object>) context.getChildrenView().get(name);
     }
 } 

@@ -1,0 +1,266 @@
+# Avolution Actor System 设计文档
+
+## 1. 系统架构
+
+### 1.1 包结构说明
+
+#### core/
+- 核心组件实现
+- ActorSystem: Actor系统的核心管理器
+- ActorRef: Actor引用接口
+- TypedActor: 类型安全的Actor基类
+- Props: Actor创建配置
+- UnTypedActor: 非类型化Actor包装器
+
+#### message/
+- 消息系统实现
+- Envelope: 消息包装器
+- Signal: 系统信号定义
+- MessageType: 消息类型枚举
+- SignalType: 信号类型枚举
+- Priority: 消息优先级
+
+#### supervision/
+- 监督策略实现
+- SupervisorStrategy: 监督策略接口
+- DefaultSupervisorStrategy: 默认监督策略
+- Directive: 监督指令枚举
+- DeathWatch: 死亡监控服务
+
+#### system/
+- 系统级Actor实现
+- DeadLetterActor: 死信处理Actor
+- SystemGuardianActor: 系统守护Actor
+- UserGuardianActor: 用户守护Actor
+- NoSender: 空发送者实现
+
+#### lifecycle/
+- 生命周期管理
+- ActorLifecycle: 生命周期状态机
+- LifecycleState: 生命周期状态枚举
+- ActorLifecycleHook: 生命周期钩子接口
+
+#### mailbox/
+- 邮箱实现
+- Mailbox: Actor消息队列
+- MessageQueue: 消息队列接口
+- PriorityMessageQueue: 优先级消息队列
+
+#### dispatch/
+- 消息调度实现
+- Dispatcher: 消息调度器
+- MessageDispatcher: 消息分发器
+- ExecutorBasedDispatcher: 基于执行器的调度器
+
+#### concurrent/
+- 并发工具
+- VirtualThreadScheduler: 虚拟线程调度器
+- ActorThreadFactory: Actor线程工厂
+
+#### config/
+- 配置管理
+- ActorConfiguration: Actor配置类
+- SystemConfiguration: 系统配置类
+
+#### metrics/
+- 性能指标
+- ActorMetrics: Actor性能指标
+- SystemMetrics: 系统性能指标
+
+#### pattern/
+- 常用模式实现
+- ASK: 请求-响应模式
+- PubSub: 发布-订阅模式
+- CircuitBreaker: 断路器模式
+
+#### stream/
+- 流处理支持
+- EventStream: 事件流
+- MessageStream: 消息流
+- StreamProcessor: 流处理器
+
+#### exception/
+- 异常定义
+- ActorCreationException: Actor创建异常
+- ActorInitializationException: 初始化异常
+- ActorKilledException: Actor终止异常
+- SystemFailureException: 系统故障异常
+
+#### util/
+- 工具类
+- ActorPath: Actor路径工具
+- MessageSerializer: 消息序列化工具
+- SystemUtil: 系统工具类
+
+### 1.2 核心组件
+
+#### ActorSystem
+- 系统生命周期管理
+  * create(): 创建ActorSystem实例
+  * terminate(): 终止ActorSystem
+  * stop(ActorRef): 停止指定Actor
+  
+- Actor管理
+  * actorOf(): 创建新Actor
+  * registerActor(): 注册Actor
+  * unregisterActor(): 注销Actor
+  
+- 系统服务
+  * deadLetters: 死信处理服务
+  * dispatcher: 消息调度服务
+  * scheduler: 调度服务
+  * eventStream: 事件流服务
+
+#### TypedActor
+- 消息处理
+  * onReceive(): 抽象消息处理方法
+  * @OnReceive: 注解式消息处理
+  * registerHandlers(): 注册消息处理器
+  
+- 生命周期钩子
+  * preStart(): 启动前处理
+  * postStop(): 停止后处理
+  * preRestart(): 重启前处理
+  * postRestart(): 重启后处理
+
+#### ActorRef
+- 消息发送
+  * tell(): 发送消息
+  * ask(): 请求-响应
+  
+- 生命周期管理
+  * stop(): 停止Actor
+  * isTerminated(): 检查终止状态
+  
+- 路径管理
+  * path(): 获取Actor路径
+  * name(): 获取Actor名称
+
+### 1.3 消息系统
+
+#### Envelope
+- 消息元数据
+  * messageId: 消息ID
+  * sender: 发送者
+  * recipient: 接收者
+  * timestamp: 时间戳
+  * retryCount: 重试次数
+  
+- 消息属性
+  * priority: 优先级
+  * scope: 作用域
+  * type: 消息类型
+  
+- 处理追踪
+  * processedActors: 已处理Actor列表
+  * metadata: 元数据映射
+
+#### Signal
+- 生命周期信号
+  * START: 启动信号
+  * STOP: 停止信号
+  * RESTART: 重启信号
+  * TERMINATED: 终止信号
+  
+- 控制信号
+  * SUSPEND: 暂停信号
+  * RESUME: 恢复信号
+  * POISON_PILL: 毒丸信号
+  * KILL: 强制终止信号
+  
+- 监督信号
+  * SUPERVISE: 监督信号
+  * ESCALATE: 升级信号
+  * CHILD_TERMINATED: 子Actor终止信号
+
+### 1.4 监督系统
+
+#### SupervisorStrategy
+- 失败处理
+  * handle(): 处理失败
+  * getMaxRetries(): 最大重试次数
+  * getWithinTimeRange(): 重试时间窗口
+  
+- 指令类型
+  * RESTART: 重启Actor
+  * STOP: 停止Actor
+  * RESUME: 恢复Actor
+  * ESCALATE: 升级到父Actor
+
+### 1.5 路由系统
+
+#### Router
+- 基础功能
+  * selectRoutee(): 选择routee
+  * createRoutees(): 创建routee
+  * postStop(): 停止处理
+  
+- 路由策略
+  * RoundRobinRouter: 轮询路由
+  * LeastLoadRouter: 最小负载路由
+  * ConsistentHashRouter: 一致性哈希路由
+
+## 2. 最佳实践
+
+### 2.1 Actor创建
+```java
+// 创建ActorSystem
+ActorSystem system = ActorSystem.create("my-system");
+
+// 创建顶级Actor
+ActorRef<MyMessage> actor = system.actorOf(
+    Props.create(MyActor.class),
+    "myActor"
+);
+
+// 创建子Actor
+ActorRef<MyMessage> child = context.actorOf(
+    Props.create(ChildActor.class),
+    "child"
+);
+```
+
+### 2.2 消息处理
+```java
+public class MyActor extends TypedActor<MyMessage> {
+    @Override
+    protected void onReceive(MyMessage message) {
+        // 处理消息
+    }
+    
+    @OnReceive(SpecialMessage.class)
+    private void handleSpecial(SpecialMessage message) {
+        // 处理特定类型消息
+    }
+}
+```
+
+### 2.3 生命周期管理
+```java
+public class MyActor extends TypedActor<MyMessage> {
+    @Override
+    public void preStart() {
+        // 初始化资源
+    }
+    
+    @Override
+    public void postStop() {
+        // 清理资源
+    }
+}
+```
+
+### 2.4 错误处理
+```java
+public class MyActor extends TypedActor<MyMessage> {
+    @Override
+    protected void onReceive(MyMessage message) {
+        try {
+            // 处理消息
+        } catch (Exception e) {
+            // 使用监督策略处理错误
+            getContext().getSupervisor().handleFailure(getSelf(), e);
+        }
+    }
+}
+```

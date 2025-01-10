@@ -20,7 +20,7 @@ import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
  */
 public abstract class TypedActor<T> implements ActorLifecycleHook {
 
-    Logger logger = LoggerFactory.getLogger(TypedActor.class);
+    protected Logger logger = LoggerFactory.getLogger(TypedActor.class);
 
     /**
      * 消息处理器

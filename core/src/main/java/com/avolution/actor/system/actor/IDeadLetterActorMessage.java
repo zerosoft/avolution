@@ -103,4 +103,10 @@ public interface IDeadLetterActorMessage {
         public Envelope getFailedMessage() { return failedMessage; }
         public Instant getTimestamp() { return timestamp; }
     }
+    //查询死信数量消息
+    class DeadLetterCount implements IDeadLetterActorMessage {
+
+    }
+
+
 }

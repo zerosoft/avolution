@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 
 import com.avolution.actor.core.context.ActorContext;
@@ -151,6 +152,21 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
                 logger.debug("tell envelope:{}",envelope);
             }
 
+        }else {
+            Envelope.Builder builder = Envelope.builder();
+            builder.message(message);
+            builder.sender(sender);
+            builder.recipient(this.getSelfRef());
+            builder.type(MessageType.NORMAL);
+            builder.retryCount(0);
+            Envelope envelope = builder.build();
+            IDeadLetterActorMessage.DeadLetter deadLetter = IDeadLetterActorMessage.messageToDeadLetter(envelope);
+            // 记录死信
+            logger.warn("Dead letter received: {}", deadLetter);
+
+            // 发送到系统的死信Actor
+            getContext().getActorSystem().getDeadLetters().tell(deadLetter, getSelfRef());
+            logger.warn("Actor is terminated, message not sent: {}", message);
         }
     }
     /**

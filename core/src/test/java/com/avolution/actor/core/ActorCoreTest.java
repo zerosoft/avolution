@@ -49,7 +49,7 @@ public class ActorCoreTest {
     void testMessageSending() {
         ActorRef<TestMessage> actor = actorSystem.actorOf(
             Props.create(TestActor.class),
-            "test-actor"
+            "test-actor-1"
         );
         
         TestMessage msg = new TestMessage("test");

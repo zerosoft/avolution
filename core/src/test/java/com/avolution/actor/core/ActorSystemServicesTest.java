@@ -2,10 +2,8 @@ package com.avolution.actor.core;
 
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.message.Signal;
-import com.avolution.actor.system.actor.DeadLetterActor;
-import com.avolution.actor.system.actor.SystemGuardianActor;
-import com.avolution.actor.system.actor.SystemGuardianActorMessage;
-import com.avolution.actor.system.actor.UserGuardianActor;
+import com.avolution.actor.pattern.ASK;
+import com.avolution.actor.system.actor.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,8 +46,9 @@ class ActorSystemServicesTest {
         actorRef.tell("test message", ActorRef.noSender());
         
         // 验证消息被转发到死信Actor
-        DeadLetterActor deadLetterActor = (DeadLetterActor) system.getDeadLetters();
-//        assertTrue(deadLetterActor.hasUndeliveredMessage());
+        ActorRef<IDeadLetterActorMessage> deadLetterActor = system.getDeadLetters();
+        Integer ask = ASK.ask(deadLetterActor, new IDeadLetterActorMessage.DeadLetterCount(), Duration.ofSeconds(3));
+        assertTrue(ask!=0);
     }
 
     @Test

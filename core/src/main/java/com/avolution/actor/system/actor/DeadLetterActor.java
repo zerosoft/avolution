@@ -37,7 +37,13 @@ public class DeadLetterActor extends TypedActor<IDeadLetterActorMessage> {
         this.metricsCollector = new ActorMetricsCollector("/system/deadLetters");
     }
 
-    @OnReceive(IDeadLetterActorMessage.DeadLetter.class)
+
+
+    private void handleDeadLetterCount(IDeadLetterActorMessage.DeadLetterCount message) {
+        getSender().tell(recentDeadLetters.size(), getSelf());
+    }
+
+
     private void handleDeadLetter(IDeadLetterActorMessage.DeadLetter deadLetter) {
         try {
             updateMetrics(deadLetter);
@@ -132,6 +138,10 @@ public class DeadLetterActor extends TypedActor<IDeadLetterActorMessage> {
 
     @Override
     protected void onReceive(IDeadLetterActorMessage message) throws Exception {
-
+        switch (message) {
+            case IDeadLetterActorMessage.DeadLetter deadLetter -> handleDeadLetter(deadLetter);
+            case IDeadLetterActorMessage.DeadLetterCount deadLetterCount -> handleDeadLetterCount(deadLetterCount);
+            default -> throw new IllegalArgumentException("Unknown message type: " + message);
+        }
     }
 }

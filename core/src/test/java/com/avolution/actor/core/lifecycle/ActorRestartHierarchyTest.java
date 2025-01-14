@@ -104,15 +104,15 @@ public class ActorRestartHierarchyTest {
         }
 
         @Override
-        public void preRestart(Throwable reason) {
+        public boolean preRestart(Throwable reason) {
             logger.info("Actor {} is about to restart", getPath());
-            super.preRestart(reason);
+             return super.preRestart(reason);
         }
 
         @Override
-        public void postRestart(Throwable reason) {
+        public boolean postRestart(Throwable reason) {
             logger.info("Actor {} has been restarted", getPath());
-            super.postRestart(reason);
+            return super.postRestart(reason);
         }
     }
 

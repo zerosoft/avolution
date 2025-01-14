@@ -1,14 +1,15 @@
 package com.avolution.actor.core.context;
 
+import java.util.concurrent.CompletableFuture;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalScope;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.concurrent.CompletableFuture;
 
 /**
  *   信号处理器
@@ -64,7 +65,7 @@ public class SignalHandler {
      * 立即终止Actor，不等待消息处理完成
      */
     private void handleKillSignal() {
-        context.stop();      // 清理资源
+        context.stop(false);      // 清理资源
     }
 
     /**
@@ -72,7 +73,20 @@ public class SignalHandler {
      * 等待当前消息处理完成后再终止
      */
     private void handleStopSignal() {
-        context.stop(new CompletableFuture<>());
+        CompletableFuture<Void> stopFuture = new CompletableFuture<>();
+        
+        // 执行生命周期钩子
+        if (!context.getUnTypedActor().getTypedActor().preStop()) {
+            logger.warn("PreStop hook returned false for actor: {}", context.getPath());
+        }
+        
+        // 停止所有子Actor
+        context.getChildren().values().forEach(child ->
+                context.getActorSystem().stop(child)
+        );
+        
+        // 执行内部停止逻辑
+        context.getLifecycle().stop(stopFuture);
     }
 
     /**
@@ -116,18 +130,26 @@ public class SignalHandler {
      */
     private void handleRestartSignal(Throwable cause) {
         try {
-//            context.getSelf().preRestart(cause);    // 重启前回调
-
+            // 执行重启前钩子
+            if (!context.getUnTypedActor().getTypedActor().preRestart(cause)) {
+                logger.warn("PreRestart hook returned false for actor: {}", context.getPath());
+                return;
+            }
+            
             // 停止所有子Actor
             context.getChildren().values().forEach(child ->
                     context.getActorSystem().stop(child)
             );
-
-//            lifecycle.restart();            // 重启生命周期
-//            context.getSelf().postRestart(cause);   // 重启后回调
-
+            
+            // 执行内部重启逻辑
+            context.getLifecycle().restart();
+            
+            // 执行重启后钩子
+            if (!context.getUnTypedActor().getTypedActor().postRestart(cause)) {
+                logger.warn("PostRestart hook returned false for actor: {}", context.getPath());
+            }
         } catch (Exception e) {
-            logger.error("Actor重启失败: {}", context.getUnTypedActor().path(), e);
+            logger.error("Actor restart failed: {}", context.getPath(), e);
             handleSystemFailure(e, null);
         }
     }

@@ -2,11 +2,12 @@ package com.avolution.actor;
 
 import com.avolution.actor.core.TypedActor;
 import com.avolution.actor.core.UnTypedActor;
+import com.avolution.actor.core.annotation.AutoRegisterActor;
 import com.avolution.actor.core.annotation.OnReceive;
 
 import java.util.concurrent.TimeUnit;
 
-public class HelloActor extends TypedActor<HelloActorMessage> {
+public class HelloActor extends AutoRegisterActor<HelloActorMessage> {
 
     @OnReceive(HelloActorMessage.Hello.class)
     public void handleHelloMessage(HelloActorMessage.Hello message) {
@@ -39,8 +40,4 @@ public class HelloActor extends TypedActor<HelloActorMessage> {
     }
 
 
-    @Override
-    protected void onReceive(HelloActorMessage message) throws Exception {
-
-    }
 }

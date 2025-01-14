@@ -28,9 +28,10 @@ public class UserGuardianActor extends TypedActor<UserGuardianActorMessage> {
     }
 
     @Override
-    public void preStart() {
-        super.preStart();
+    public boolean preStart() {
         logger.debug("UserGuardianActor started at path: {}", getContext().getPath());
+        return super.preStart();
+
     }
 
     // 1. Actor 创建流程

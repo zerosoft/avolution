@@ -3,15 +3,16 @@ package com.avolution.actor.core.lifecycle;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import com.avolution.actor.core.TypedActor;
-import com.avolution.actor.core.UnTypedActor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.context.ActorContext;
 import com.avolution.actor.exception.ActorInitializationException;
 /**
- * Actor 生命周期
+ * 整体生命周期状态管理
+ * 协调外部钩子和内部钩子的调用顺序
+ * 维护 Actor 的当前状态
  */
 public class ActorLifecycle {
     private static final Logger logger = LoggerFactory.getLogger(ActorLifecycle.class);
@@ -19,11 +20,13 @@ public class ActorLifecycle {
     private volatile LifecycleState state = LifecycleState.NEW;
     // Actor上下文
     private final ActorContext context;
+    private final ActorLifecycleHook lifecycleHook;
+    private final InternalLifecycleHook internalHook;
 
-    private TypedActor typedActor;
-
-    public ActorLifecycle(ActorContext context, UnTypedActor typedActor) {
+    public ActorLifecycle(ActorContext context, UnTypedActor<?> unTypedActor) {
         this.context = context;
+        this.lifecycleHook = unTypedActor.getTypedActor();
+        this.internalHook = new ActorContextInternalLifecycleHook(context, this);
     }
 
     /**
@@ -33,8 +36,17 @@ public class ActorLifecycle {
         if (state == LifecycleState.NEW) {
             try {
                 state = LifecycleState.STARTING;
-                // 执行Actor启动前钩子
-
+                
+                // 执行用户定义的前置钩子
+                if (!lifecycleHook.preStart()) {
+                    throw new ActorInitializationException("PreStart hook returned false");
+                }
+                
+                // 执行内部启动逻辑
+                if (!internalHook.executeStart()) {
+                    throw new ActorInitializationException("Internal start execution failed");
+                }
+                
                 state = LifecycleState.RUNNING;
                 logger.debug("Actor started: {}", context.getPath());
             } catch (Exception e) {
@@ -49,34 +61,30 @@ public class ActorLifecycle {
      * 停止Actor
      * @return
      */
-    public CompletableFuture<Void> stop(CompletableFuture<Void> stopFuture) {
-        if (state != LifecycleState.RUNNING && state != LifecycleState.SUSPENDED) {
-            stopFuture.complete(null);
-            return stopFuture;
+    public void stop(CompletableFuture<Void> stopFuture) {
+        if (state == LifecycleState.RUNNING) {
+            try {
+                state = LifecycleState.STOPPING;
+                
+                // 执行用户定义的前置钩子
+                if (!lifecycleHook.preStop()) {
+                    logger.warn("PreStop hook returned false for actor: {}", context.getPath());
+                }
+                
+                // 执行内部停止逻辑
+                if (!internalHook.executeStop()) {
+                    logger.warn("Internal stop execution failed for actor: {}", context.getPath());
+                }
+                
+                state = LifecycleState.STOPPED;
+                stopFuture.complete(null);
+                logger.debug("Actor stopped: {}", context.getPath());
+            } catch (Exception e) {
+                state = LifecycleState.FAILED;
+                stopFuture.completeExceptionally(e);
+                logger.error("Failed to stop actor: {}", context.getPath(), e);
+            }
         }
-        logger.debug("Stopping actor: {}", context.getPath());
-        try {
-            state = LifecycleState.STOPPING;
-            // 1. 停止子Actor
-            stopChildren()
-                    .thenRun(() -> {
-                        // 2. 执行停止回调
-//                        internalLifecycleHook.executePostStop();
-
-                        state = LifecycleState.STOPPED;
-                        stopFuture.complete(null);
-                    })
-                    .exceptionally(e -> {
-                        state = LifecycleState.FAILED;
-                        stopFuture.completeExceptionally(e);
-                        return null;
-                    });
-
-        } catch (Exception e) {
-            state = LifecycleState.FAILED;
-            stopFuture.completeExceptionally(e);
-        }
-        return stopFuture;
     }
 
     private CompletableFuture<Void> stopChildren() {

@@ -405,6 +405,7 @@ public class ActorSystem {
 
         // 检查名称格式
         if (!name.matches("^[a-zA-Z0-9_\\-]+$")) {
+            // 只允许字母、数字、下划线和连字符
             throw new IllegalArgumentException(
                     "Actor name can only contain alphanumeric characters, underscores and hyphens"
             );
@@ -680,5 +681,9 @@ public class ActorSystem {
 
     public EventStream getEventStream() {
         return eventStream;
+    }
+
+    public ActorRef<SystemGuardianActorMessage> getSystemGuardian() {
+        return systemGuardian;
     }
 }

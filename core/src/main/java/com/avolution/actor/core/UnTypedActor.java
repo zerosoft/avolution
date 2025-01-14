@@ -63,10 +63,10 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
      *
      * @param message 接收到的消息
      */
-    public void onReceive(Object message) {
+    public void onReceive(Envelope message) {
         try {
             logger.debug("onReceive message:{}",message);
-            typedActor.onReceive((T) message);
+            typedActor.receive(message);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -243,33 +243,33 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
 
 
     @Override
-    public void preStart() {
-        typedActor.preStart();
+    public boolean preStart() {
+       return typedActor.preStart();
     }
 
     @Override
-    public void preRestart(Throwable reason) {
-        typedActor.preRestart(reason);
+    public boolean preRestart(Throwable reason) {
+       return typedActor.preRestart(reason);
     }
 
     @Override
-    public void postRestart(Throwable reason) {
-        typedActor.postRestart(reason);
+    public boolean postRestart(Throwable reason) {
+       return typedActor.postRestart(reason);
     }
 
     @Override
-    public void preStop() {
-        typedActor.preStop();
+    public boolean preStop() {
+       return typedActor.preStop();
     }
 
     @Override
-    public void preResume() {
-        typedActor.preResume();
+    public boolean preResume() {
+       return typedActor.preResume();
     }
 
     @Override
-    public void preSuspend() {
-        ActorLifecycleHook.super.preSuspend();
+    public boolean preSuspend() {
+       return ActorLifecycleHook.super.preSuspend();
     }
 
     // 处理消息的主要方法
@@ -361,7 +361,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
             .recipient(context.getParent().getUnTypedActor())
             .build();
             
-        context.getParent().tell(failureEnvelope, getSelfRef());
+        context.getParent().tell(failureEnvelope);
         
         // 向系统报告失败
         context.getActorSystem().handleSystemFailure(e, this);

@@ -1,9 +1,11 @@
 package com.avolution.actor.system.actor;
 
 
+import com.avolution.actor.core.ActorRef;
 import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.MessageType;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
@@ -71,5 +73,34 @@ public interface IDeadLetterActorMessage {
                     getFailureReason()
             );
         }
+    }
+
+    /**
+     * 致命Actor错误消息
+     */
+    class FatalActorError implements IDeadLetterActorMessage {
+        private final ActorRef failedActor;
+        private final Throwable originalError;
+        private final Exception escalationError;
+        private final Envelope failedMessage;
+        private final Instant timestamp;
+
+        public FatalActorError(ActorRef failedActor,
+                               Throwable originalError,
+                               Exception escalationError,
+                               Envelope failedMessage) {
+            this.failedActor = failedActor;
+            this.originalError = originalError;
+            this.escalationError = escalationError;
+            this.failedMessage = failedMessage;
+            this.timestamp = Instant.now();
+        }
+
+        // Getters
+        public ActorRef getFailedActor() { return failedActor; }
+        public Throwable getOriginalError() { return originalError; }
+        public Exception getEscalationError() { return escalationError; }
+        public Envelope getFailedMessage() { return failedMessage; }
+        public Instant getTimestamp() { return timestamp; }
     }
 }

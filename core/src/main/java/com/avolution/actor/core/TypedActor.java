@@ -1,83 +1,65 @@
 package com.avolution.actor.core;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-
+import com.avolution.actor.core.context.ActorContext;
+import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
+import com.avolution.actor.message.Envelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.avolution.actor.core.annotation.OnReceive;
-import com.avolution.actor.core.context.ActorContext;
-import com.avolution.actor.core.lifecycle.ActorLifecycleHook;
-
-
 /**
- *
- * @param <T>
+ * 类型安全的Actor基类
+ * @param <T> 消息类型参数
  */
 public abstract class TypedActor<T> implements ActorLifecycleHook {
-
-    protected Logger logger = LoggerFactory.getLogger(TypedActor.class);
-
-    /**
-     * 消息处理器
-     */
-    private final Map<Class<?>, Consumer<Object>> handlers = new HashMap<>();
-
+    protected final Logger logger = LoggerFactory.getLogger(getClass());
+    // Actor上下文
     private ActorContext actorContext;
-
+    // 当前消息信封
+    private Envelope currentEnvelope;
     /**
-     * 注册消息处理器
+     * 处理消息
      */
-    private void registerHandlers() {
-        for (Method method : this.getClass().getDeclaredMethods()) {
-            if (method.isAnnotationPresent(OnReceive.class)) {
-                Class<?> messageType = method.getAnnotation(OnReceive.class).value();
-                if (method.getParameterCount() == 1 && messageType.isAssignableFrom(method.getParameterTypes()[0])) {
-                    method.setAccessible(true);
-                    handlers.put(messageType, message -> invokeHandler(method, message));
-                }
-            }
+    public void receive(Envelope envelope) {
+        if (envelope == null || envelope.getMessage() == null) {
+            logger.warn("Received null envelope or message");
+            return;
         }
-    }
+        currentEnvelope = envelope;
+        Object message = envelope.getMessage();
 
-    /**
-     * 调用消息处理器
-     *
-     * @param method  方法
-     * @param message 消息
-     */
-    private void invokeHandler(Method method, Object message) {
         try {
-            method.invoke(this, message);
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            logger.error("Error invoking message handler for {}: {}", message.getClass().getSimpleName(), cause.getMessage());
+            onReceive((T) message);
         } catch (Exception e) {
-            logger.error("Error invoking message handler", e);
+            handleError(e, envelope);
+        } finally {
+            currentEnvelope = null;
         }
-    }
 
-    @Override
-    public void preStart() {
-        ActorLifecycleHook.super.preStart();
-        registerHandlers();
     }
 
     /**
-     * 设置Actor上下文
+     * 处理错误
      */
+    protected void handleError(Throwable error, Envelope envelope) {
+        logger.error("Error processing message: {}", envelope, error);
+
+        // 创建错误回复
+        if (envelope.getSender() != null) {
+            Envelope errorReply = envelope.createErrorReply(error);
+            getContext().tell(errorReply);
+        }
+
+        // 通知监督者
+        getContext().escalate(error, envelope);
+    }
+
+
+    // Context management methods
     public void setActorContext(ActorContext context) {
         this.actorContext = context;
     }
 
-    /**
-     * 获取Actor上下文
-     */
-    public ActorContext getContext() {
+    public  ActorContext getContext() {
         return actorContext;
     }
 
@@ -93,6 +75,13 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
         return getContext().getPath();
     }
 
-    protected abstract void onReceive(T message) throws Exception;
+    public Envelope getCurrentEnvelope() {
+        return currentEnvelope;
+    }
 
+    /**
+     * 抽象的消息处理方法
+     * 子类必须实现此方法来处理特定类型的消息
+     */
+    protected abstract void onReceive(T message) throws Exception;
 }

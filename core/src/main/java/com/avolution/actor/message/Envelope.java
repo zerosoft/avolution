@@ -1,7 +1,11 @@
 package com.avolution.actor.message;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import com.avolution.actor.core.ActorRef;
 
@@ -29,6 +33,10 @@ public class Envelope {
     private Throwable lastError;
     // 处理超时时间（毫秒）
     private long timeout;
+    // 消息作用域
+    private final SignalScope scope;
+    // 元数据
+    private final Map<String, Object> metadata;
 
     private Envelope(Builder builder) {
         this.id = builder.id != null ? builder.id : UUID.randomUUID().toString();
@@ -41,6 +49,8 @@ public class Envelope {
         this.retryCount = builder.retryCount;
         this.lastError = builder.lastError;
         this.timeout = builder.timeout;
+        this.scope = builder.scope != null ? builder.scope : SignalScope.SINGLE;
+        this.metadata = builder.metadata != null ? new HashMap<>(builder.metadata):new HashMap<>();
     }
 
     // Getters
@@ -102,6 +112,39 @@ public class Envelope {
     }
 
     /**
+     * 获取消息作用域
+     */
+    public SignalScope getScope() {
+        return scope;
+    }
+
+    /**
+     * 获取元数据
+     */
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    /**
+     * 获取指定键的元数据值
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getMetadata(String key) {
+        return (T) metadata.get(key);
+    }
+
+    /**
+     * 检查是否包含指定键的元数据
+     */
+    public boolean hasMetadata(String key) {
+        return metadata.containsKey(key);
+    }
+
+    public void addMetadata(String key, Object value) {
+        metadata.put(key, value);
+    }
+
+    /**
      * Builder 模式构建器
      */
     public static class Builder {
@@ -115,8 +158,12 @@ public class Envelope {
         private int retryCount;
         private Throwable lastError;
         private long timeout;
+        private SignalScope scope;
+        private Map<String, Object> metadata;
 
-        public Builder() {}
+        public Builder() {
+            this.metadata = new HashMap<>();
+        }
 
         public Builder id(String id) {
             this.id = id;
@@ -168,6 +215,29 @@ public class Envelope {
             return this;
         }
 
+        public Builder scope(SignalScope scope) {
+            this.scope = scope;
+            return this;
+        }
+
+        public Builder metadata(String key, Object value) {
+            if (this.metadata == null) {
+                this.metadata = new HashMap<>();
+            }
+            this.metadata.put(key, value);
+            return this;
+        }
+
+        public Builder metadata(Map<String, Object> metadata) {
+            if (metadata != null) {
+                if (this.metadata == null) {
+                    this.metadata = new HashMap<>();
+                }
+                this.metadata.putAll(metadata);
+            }
+            return this;
+        }
+
         public Envelope build() {
             return new Envelope(this);
         }
@@ -180,8 +250,8 @@ public class Envelope {
     @Override
     public String toString() {
         return String.format(
-            "Envelope[id=%s, type=%s, priority=%s, retryCount=%d, message=%s]",
-            id, type, priority, retryCount, message
+            "Envelope[id=%s, type=%s, priority=%s, scope=%s, retryCount=%d, message=%s]",
+            id, type, priority, scope, retryCount, message
         );
     }
 
@@ -195,6 +265,8 @@ public class Envelope {
             .sender(this.recipient)
             .recipient(this.sender)
             .priority(this.priority)
+            .scope(this.scope)
+            .metadata(this.metadata)  // 保持元数据
             .build();
     }
 
@@ -208,6 +280,8 @@ public class Envelope {
             .sender(this.sender)
             .recipient(newRecipient)
             .priority(this.priority)
+            .scope(this.scope)
+            .metadata(this.metadata)  // 保持元数据
             .build();
     }
 
@@ -221,6 +295,9 @@ public class Envelope {
             .sender(this.recipient)
             .recipient(this.sender)
             .priority(Priority.HIGH)
+            .scope(SignalScope.SINGLE)  // 错误消息通常是本地的
+            .metadata("error.original.message", this.message)  // 记录原始消息
+            .metadata("error.timestamp", Instant.now())
             .build();
     }
 }

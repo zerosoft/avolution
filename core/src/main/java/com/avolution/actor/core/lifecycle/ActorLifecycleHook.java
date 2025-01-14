@@ -1,75 +1,61 @@
 package com.avolution.actor.core.lifecycle;
 
-import java.util.function.Consumer;
-
-import com.avolution.actor.message.Envelope;
 
 /**
  *
  * Actor生命周期回调接口
- *
- */
-/**
- * Actor生命周期钩子接口
- * 定义了Actor在其生命周期的不同阶段可以执行的回调方法
+ * 由 TypedActor 实现
+ * 提供生命周期事件的回调方法
+ * 允许用户自定义生命周期事件的处理逻辑
  */
 public interface ActorLifecycleHook {
     /**
-     * Actor启动前的预处理钩子
-     * - 在Actor实例创建后、开始处理消息前调用
-     * - 用于初始化资源、建立连接等准备工作
-     * - 如果抛出异常，Actor将无法启动
+     * Actor启动前的同步钩子
+     * @return true表示可以继续，false表示终止启动
      */
-    default void preStart() {}
+    default boolean preStart() {
+        return true;
+    }
 
     /**
-     * Actor重启前的预处理钩子
-     * - 在Actor即将重启前调用
-     * - 用于保存状态、清理资源等
-     * - 重启不会创建新的Actor实例，而是重置当前实例
-     *
-     * @param reason 导致重启的原因(异常)
+     * Actor停止前的同步钩子
+     * @return true表示可以继续，false表示终止停止
      */
-    default void preRestart(Throwable reason) {}
+    default boolean preStop() {
+        return true;
+    }
 
     /**
-     * Actor重启后的后处理钩子
-     * - 在Actor重启完成后调用
-     * - 用于恢复状态、重新初始化资源等
-     * - 可以访问到重启前保存的状态
-     *
-     * @param reason 导致重启的原因(异常)
+     * Actor重启前的同步钩子
+     * @param reason 重启原因
+     * @return true表示可以继续，false表示终止重启
      */
-    default void postRestart(Throwable reason) {}
+    default boolean preRestart(Throwable reason) {
+        return true;
+    }
 
     /**
-     * Actor停止前的预处理钩子
-     * - 在Actor即将停止前调用
-     * - 用于清理资源、保存状态等收尾工作
-     * - 停止后Actor将不再处理新消息
+     * Actor重启后的同步钩子
+     * @param reason 重启原因
+     * @return true表示重启成功，false表示重启失败
      */
-    default void preStop() {}
+    default boolean postRestart(Throwable reason) {
+        return true;
+    }
 
     /**
-     * Actor恢复前的预处理钩子
-     * - 在Actor从暂停状态恢复前调用
-     * - 用于重新建立连接、恢复缓存等
+     * Actor暂停前的同步钩子
+     * @return true表示可以继续，false表示终止暂停
      */
-    default void preResume() {}
+    default boolean preSuspend() {
+        return true;
+    }
 
     /**
-     * Actor暂停前的预处理钩子
-     * - 在Actor即将暂停前调用
-     * - 用于保存临时状态、释放资源等
-     * - 暂停后Actor将暂时不处理新消息
+     * Actor恢复前的同步钩子
+     * @return true表示可以继续，false表示终止恢复
      */
-    default void preSuspend() {}
-    /**
-     * 在Actor接收消息之前执行
-     * @param message 消息
-     * @param next 下一个处理者
-     */
-    default void aroundReceive(Envelope message, Consumer<Envelope> next) {
-        next.accept(message);
+    default boolean preResume() {
+        return true;
     }
 }

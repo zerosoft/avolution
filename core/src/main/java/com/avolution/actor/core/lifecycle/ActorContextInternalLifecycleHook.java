@@ -1,48 +1,83 @@
 package com.avolution.actor.core.lifecycle;
 
-import com.avolution.actor.core.context.ActorContext;
-
 import java.util.concurrent.CompletableFuture;
 
-public class ActorContextInternalLifecycleHook implements InternalLifecycleHook{
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-    private ActorContext actorContext;
-    private ActorLifecycle actorLifecycle;
+import com.avolution.actor.core.context.ActorContext;
+
+public class ActorContextInternalLifecycleHook implements InternalLifecycleHook {
+
+    private static final Logger logger = LoggerFactory.getLogger(ActorContextInternalLifecycleHook.class);
+
+    private final ActorContext actorContext;
+    private final ActorLifecycle actorLifecycle;
 
     public ActorContextInternalLifecycleHook(ActorContext actorContext, ActorLifecycle lifecycle) {
-        this.actorContext=actorContext;
-        this.actorLifecycle=lifecycle;
+        this.actorContext = actorContext;
+        this.actorLifecycle = lifecycle;
     }
 
     @Override
-    public void executePreStart() {
-        actorLifecycle.start();
-        actorContext.getMailbox().resume();
+    public boolean executeStart() {
+        try {
+            actorLifecycle.start();
+            actorContext.getMailbox().resume();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to execute start", e);
+            return false;
+        }
     }
 
     @Override
-    public void executePostStop() {
-        actorContext.getMailbox().suspend();
-        actorLifecycle.stop(new CompletableFuture<>());
+    public boolean executeStop() {
+        try {
+            actorContext.getMailbox().suspend();
+            actorLifecycle.stop(new CompletableFuture<>());
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to execute stop", e);
+            return false;
+        }
     }
 
     @Override
-    public void executePreRestart(Throwable reason) {
-        actorLifecycle.restart();
+    public boolean executeRestart(Throwable reason) {
+        try {
+            actorLifecycle.restart();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to execute restart", e);
+            return false;
+        }
     }
 
     @Override
-    public void executePostRestart(Throwable reason) {
-        actorLifecycle.resume();
+    public boolean executeSuspend() {
+        try {
+            actorContext.getMailbox().suspend();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to execute suspend", e);
+            return false;
+        }
     }
 
     @Override
-    public void executeResume() {
-        actorContext.getMailbox().resume();
+    public boolean executeResume() {
+        try {
+            actorContext.getMailbox().resume();
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to execute resume", e);
+            return false;
+        }
     }
 
     @Override
-    public void executeSuspend() {
-        actorContext.getMailbox().suspend();
+    public LifecycleState getCurrentState() {
+        return actorLifecycle.getState();
     }
 }

@@ -15,14 +15,7 @@ public interface ActorContextLifecycle {
      * 等待当前消息处理完成后停止
      * @return 停止是否成功
      */
-    boolean stop();
-
-    /**
-     * 立即停止Actor
-     * 立即停止，不等待当前消息处理完成
-     * @return 停止是否成功
-     */
-    boolean stopNow();
+    boolean stop(boolean now);
 
     /**
      * 重启Actor

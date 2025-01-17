@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import com.avolution.actor.supervision.SupervisorStrategy;
 import com.avolution.actor.system.actor.IDeadLetterActorMessage;
 import org.slf4j.Logger;
 
@@ -49,6 +50,7 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
     private final PriorityStrategy priorityStrategy;
     private final RetryStrategy retryStrategy; 
     private final StashStrategy stashStrategy;
+    private SupervisorStrategy supervisorStrategy;
 
     public UnTypedActor(TypedActor<T> typedActor) {
         this.typedActor = typedActor;
@@ -410,5 +412,9 @@ public class UnTypedActor<T> implements ActorLifecycleHook,ActorRef<T> {
 
     public StashStrategy getStashStrategy() {
         return stashStrategy;
+    }
+
+    public SupervisorStrategy getSupervisorStrategy() {
+        return supervisorStrategy;
     }
 }

@@ -1,12 +1,17 @@
 package com.avolution.actor.core.context;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import com.avolution.actor.supervision.Directive;
+import com.avolution.actor.supervision.SupervisorStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,7 +64,8 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
     private final ActorScheduler scheduler;
     // 内部生命周期钩子，处理生命周期事件
     private InternalLifecycleHook internalLifecycleHook;
-
+    // Actor配置属性
+    private Props props;
     /**
      * 初始化Actor上下文
      *
@@ -75,7 +81,7 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
         this.system = system;
         this.unTypedActor = unTypedActor;
         this.parent = parent;
-
+        this.props=props;
         // 创建邮箱配置
         MailboxConfig config = MailboxConfig.builder()
                 .capacity(2000)                // 设置较大的容量
@@ -137,12 +143,6 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
         mailbox.unstashAll();
     }
 
-    /**
-     * 清空邮箱
-     */
-    public void clearMailbox() {
-        mailbox.clear();
-    }
 
     /**
      * 获取邮箱状态
@@ -163,6 +163,7 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
     @Override
     public boolean start() {
         try {
+            logger.debug("Starting actor: {}", path);
             // 执行生命周期钩子
             return internalLifecycleHook.executeStart();
         } catch (Exception e) {
@@ -200,46 +201,139 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
     }
 
     /**
-     * 停止Actor
+     * 修改现有的stop方法，使用gracefulStop
      */
     @Override
     public boolean stop(boolean now) {
-        if (now){
-            try {
-                clearMailbox();
-                return internalLifecycleHook.executeStop();
-            } catch (Exception e) {
-                logger.error("Failed to stop actor immediately: {}", path, e);
-                return false;
-            }
-        }else {
-            CompletableFuture<Void> stopFuture = new CompletableFuture<>();
-            try {
-                // 清空邮箱
-                clearMailbox();
+        if (now) {
+            // 立即停止
+            mailbox.close();
+            return internalLifecycleHook.executeStop();
+        } else {
+            // 优雅停止
+            gracefulStop().exceptionally(throwable -> {
+                logger.error("Error during graceful stop of actor: {}", path, throwable);
+                return null;
+            });
+            return true;
+        }
+    }
 
-                // 停止Actor
-                lifecycle.stop(stopFuture);
+    /**
+     * 优雅关闭Actor及其子Actor
+     * @return 关闭完成的Future
+     */
+    public CompletableFuture<Void> gracefulStop() {
+        CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
-                // 等待停止完成
-                stopFuture.get(mailbox.getMessageTimeout(), TimeUnit.MILLISECONDS);
-
-                return true;
-            } catch (TimeoutException te) {
-                logger.error("Actor stop timed out: {}", path, te);
-                stopFuture.completeExceptionally(te);
-                return false;
-            } catch (Exception e) {
-                logger.error("Failed to stop actor: {}", path, e);
-                stopFuture.completeExceptionally(e);
-                return false;
-            } finally {
-                if (!stopFuture.isDone()) {
-                    stopFuture.complete(null); // 确保 future 完成
-                }
-            }
+        if (children.isEmpty()) {
+            // 没有子Actor，直接关闭自己
+            stopSelf(stopFuture);
+            return stopFuture;
         }
 
+        // 创建计数器跟踪子Actor关闭状态
+        AtomicInteger remainingChildren = new AtomicInteger(children.size());
+        List<CompletableFuture<Void>> childStopFutures = new ArrayList<>();
+
+        // 停止所有子Actor
+        for (ActorRef<?> child : children.values()) {
+            CompletableFuture<Void> childStopFuture = stopChild(child);
+            childStopFutures.add(childStopFuture);
+
+            childStopFuture.whenComplete((result, throwable) -> {
+                if (throwable != null) {
+                    logger.error("Error stopping child actor: {}", child.path(), throwable);
+                }
+
+                if (remainingChildren.decrementAndGet() == 0) {
+                    // 所有子Actor已关闭，关闭自己
+                    stopSelf(stopFuture);
+                }
+            });
+        }
+
+        // 设置超时处理
+        scheduleStopTimeout(stopFuture, childStopFutures);
+
+        return stopFuture;
+    }
+    /**
+     * 停止子Actor
+     */
+    private CompletableFuture<Void> stopChild(ActorRef child) {
+        CompletableFuture<Void> childStopFuture = new CompletableFuture<>();
+
+        Envelope stopSignal = Envelope.builder()
+                .message(Signal.STOP)
+                .type(MessageType.SIGNAL)
+                .priority(Priority.HIGH)
+                .scope(SignalScope.SINGLE)
+                .sender(unTypedActor.getSelfRef())
+                .recipient(child)
+                .build();
+
+        // 添加停止Future到元数据中
+        stopSignal.addMetadata("stopFuture", childStopFuture);
+
+        // 发送停止信号
+        child.tell(stopSignal, ActorRef.noSender());
+
+        return childStopFuture;
+    }
+
+    /**
+     * 停止当前Actor
+     */
+    private void stopSelf(CompletableFuture<Void> stopFuture) {
+        try {
+            // 关闭邮箱
+            mailbox.close();
+
+            // 执行停止生命周期钩子
+            boolean stopped = internalLifecycleHook.executeStop();
+
+            if (stopped) {
+                // 从父Actor中移除自己
+                if (parent != null) {
+                    parent.removeChild(unTypedActor.getSelfRef());
+                }
+                stopFuture.complete(null);
+            } else {
+                stopFuture.completeExceptionally(
+                        new IllegalStateException("Failed to stop actor: " + path)
+                );
+            }
+        } catch (Exception e) {
+            stopFuture.completeExceptionally(e);
+        }
+    }
+
+    /**
+     * 设置停止超时处理
+     */
+    private void scheduleStopTimeout(
+            CompletableFuture<Void> stopFuture,
+            List<CompletableFuture<Void>> childStopFutures) {
+
+        // 设置30秒超时
+        scheduler.schedule(() -> {
+            if (!stopFuture.isDone()) {
+                // 取消所有未完成的子Actor停止Future
+                childStopFutures.forEach(future ->
+                        future.completeExceptionally(
+                                new TimeoutException("Actor stop timeout: " + path)
+                        )
+                );
+
+                // 强制停止
+                mailbox.close();
+                stop(true);
+                stopFuture.completeExceptionally(
+                        new TimeoutException("Actor stop timeout: " + path)
+                );
+            }
+        }, 30, TimeUnit.SECONDS);
     }
 
 
@@ -446,31 +540,43 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
      * 处理Actor失败消息
      */
     private void handleActorFailure(ActorFailure failure) {
-        ActorRef failedActor = failure.getFailedActor();
-        if (children.containsValue(failedActor)) {
-//            unTypedActor.supervisorStrategy().handleFailure(this, failedActor, failure.getCause(), failure.getFailedMessage());
+        // 获取监督策略
+        SupervisorStrategy strategy = getUnTypedActor().getSupervisorStrategy();
+
+        // 根据策略决定处理方式
+        Directive directive = strategy.handle(failure.getCause());
+
+        switch (directive) {
+            // 继续处理下一条消息
+            case RESUME ->
+                logger.debug("Resuming actor after failure: {}", failure);
+//                    child.tell(Signal.RESUME, getSelf());
+            // 重启Actor
+            case RESTART ->
+                logger.debug("Restarting actor after failure: {}", failure);
+//                    child.tell(Signal.RESTART, getSelf());
+            //  停止Actor
+            case STOP -> {
+                logger.debug("Stopping actor after failure: {}", failure);
+                ActorRef actorRef = failure.getFailedActor();
+                logger.debug("Stopping actor after failure: {}", actorRef.path());
+                gracefulStop()
+                        .exceptionally(e -> {
+                            logger.error("Error stopping actor {} after failure",
+                                    actorRef.path(), e);
+                            return null;
+                        });
+            }
+            //  向上传递错误
+            case ESCALATE -> {
+                // 向父Actor升级错误
+                if (getParent() != null) {
+//                    Envelope escalateSignal = createEscalateSignal(cause, child, failedMessage);
+//                    getParent().getUnTypedActor().tell(escalateSignal);
+                }
+            }
         }
     }
-
-
-    /**
-     * 获取所有子Actor的映射
-     *
-     * @return 子Actor映射表
-     */
-    public Map<String, ActorRef<?>> getChildren() {
-        return children;
-    }
-
-    /**
-     * 获取所有子Actor的只读映射
-     *
-     * @return 子Actor只读映射表
-     */
-    public Map<String, ActorRef<?>> getChildrenView() {
-        return Collections.unmodifiableMap(children);
-    }
-
 
     /**
      * 停止Actor (自己或者子类 )
@@ -478,13 +584,13 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
      * @param actor
      * @return
      */
-    public CompletableFuture<Void> stop(ActorRef actor) {
+    public void stop(ActorRef actor) {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
         // 直接调用生命周期管理
         if (actor.path().equals(getUnTypedActor().path())) {
-            lifecycle.stop(stopFuture);
-            return stopFuture;
+            lifecycle.stop();
+            return;
         }
 
         // 子Actor停止逻辑
@@ -499,15 +605,11 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
             // 发送停止信号
             actor.tell(signal, getUnTypedActor().getSelfRef());
 
-            return stopFuture.orTimeout(10, TimeUnit.SECONDS)
-                    .exceptionally(e -> {
-                        handleStopTimeout(actor, e);
-                        return null;
-                    });
+            return ;
         }
 
         stopFuture.complete(null);
-        return stopFuture;
+        return;
     }
 
     private void handleStopTimeout(ActorRef actor, Throwable e) {
@@ -582,10 +684,6 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
             // 从系统中注销
             system.unregisterActor(child.path());
         }
-    }
-
-    public void stop(CompletableFuture<Void> stop) {
-        lifecycle.stop(stop);
     }
 
     /**
@@ -681,6 +779,24 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
 
     public ActorContext getParent() {
         return parent;
+    }
+
+    /**
+     * 获取所有子Actor的映射
+     *
+     * @return 子Actor映射表
+     */
+    public Map<String, ActorRef<?>> getChildren() {
+        return children;
+    }
+
+    /**
+     * 获取所有子Actor的只读映射
+     *
+     * @return 子Actor只读映射表
+     */
+    public Map<String, ActorRef<?>> getChildrenView() {
+        return Collections.unmodifiableMap(children);
     }
 }
 

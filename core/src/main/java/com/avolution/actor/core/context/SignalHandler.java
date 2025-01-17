@@ -1,6 +1,5 @@
 package com.avolution.actor.core.context;
 
-import java.util.concurrent.CompletableFuture;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +9,8 @@ import com.avolution.actor.message.Envelope;
 import com.avolution.actor.message.Priority;
 import com.avolution.actor.message.Signal;
 import com.avolution.actor.message.SignalScope;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  *   信号处理器
@@ -36,7 +37,7 @@ public class SignalHandler {
         Signal signal = (Signal) envelope.getMessage();
         switch (signal) {
             // 处理各类信号
-            case STOP -> handleStopSignal();              // 优雅停止信号
+            case STOP -> handleStopSignal(envelope);              // 优雅停止信号
             case KILL -> handleKillSignal();              // 强制终止信号
             case RESTART -> handleRestartSignal(          // 重启信号
                     (Throwable) envelope.getMetadata("cause")
@@ -48,7 +49,7 @@ public class SignalHandler {
                     (ActorRef<?>) envelope.getMetadata("child"),
                     (Envelope) envelope.getMetadata("failedMessage")
             );
-            case POISON_PILL -> handlePoisonPill((CompletableFuture<Void>)envelope.getMetadata("stopFuture"));       // 毒丸信号
+            case POISON_PILL -> handlePoisonPill();       // 毒丸信号
             case CHILD_TERMINATED -> handleChildTerminated(// 子Actor终止信号
                     (ActorRef<?>) envelope.getMetadata("child")
             );
@@ -72,29 +73,27 @@ public class SignalHandler {
      * 处理优雅停止信号
      * 等待当前消息处理完成后再终止
      */
-    private void handleStopSignal() {
-        CompletableFuture<Void> stopFuture = new CompletableFuture<>();
-        
-        // 执行生命周期钩子
-        if (!context.getUnTypedActor().getTypedActor().preStop()) {
-            logger.warn("PreStop hook returned false for actor: {}", context.getPath());
-        }
-        
-        // 停止所有子Actor
-        context.getChildren().values().forEach(child ->
-                context.getActorSystem().stop(child)
-        );
-        
-        // 执行内部停止逻辑
-        context.getLifecycle().stop(stopFuture);
+    private void handleStopSignal(Envelope envelope) {
+            CompletableFuture<Void> stopFuture = (CompletableFuture<Void>) envelope.getMetadata("stopFuture");
+            if (stopFuture != null) {
+                context.gracefulStop().whenComplete((v, t) -> {
+                    if (t != null) {
+                        stopFuture.completeExceptionally(t);
+                    } else {
+                        stopFuture.complete(null);
+                    }
+                });
+            } else {
+                context.gracefulStop();
+            }
     }
 
     /**
      * 处理毒丸信号
      * 处理完当前邮箱中的所有消息后终止
      */
-    private void handlePoisonPill(CompletableFuture<Void> stopFuture) {
-        context.stop(stopFuture);
+    private void handlePoisonPill() {
+        context.stop(false);
     }
 
     /**
@@ -130,24 +129,7 @@ public class SignalHandler {
      */
     private void handleRestartSignal(Throwable cause) {
         try {
-            // 执行重启前钩子
-            if (!context.getUnTypedActor().getTypedActor().preRestart(cause)) {
-                logger.warn("PreRestart hook returned false for actor: {}", context.getPath());
-                return;
-            }
-            
-            // 停止所有子Actor
-            context.getChildren().values().forEach(child ->
-                    context.getActorSystem().stop(child)
-            );
-            
-            // 执行内部重启逻辑
-            context.getLifecycle().restart();
-            
-            // 执行重启后钩子
-            if (!context.getUnTypedActor().getTypedActor().postRestart(cause)) {
-                logger.warn("PostRestart hook returned false for actor: {}", context.getPath());
-            }
+           context.restart(cause);
         } catch (Exception e) {
             logger.error("Actor restart failed: {}", context.getPath(), e);
             handleSystemFailure(e, null);

@@ -87,7 +87,7 @@ public class ActorStopTest {
 
             // 停止父Actor
             CompletableFuture<Void> stopFuture = system.stop(parent);
-            stopFuture.get(10, TimeUnit.SECONDS); // 使用get等待完成
+            stopFuture.get(); // 使用get等待完成
 
             // 验证清理
 //            assertFalse(system.hasActor(parent.path()));

@@ -87,6 +87,11 @@ public class ActorSystem {
 
     private static final AtomicReference<ActorSystem> INSTANCE = new AtomicReference<>();
     private static final ConcurrentHashMap<String, ActorSystem> NAMED_SYSTEMS = new ConcurrentHashMap<>();
+
+    public static final String SYSTEM_DEAD_LETTERS = "/system/deadLetters";
+    public static final String SYSTEM_GUARDIAN = "/system/guardian";
+    public static final String USER = "/user";
+
     // 系统名称
     private final String name;
     // 系统组件
@@ -168,25 +173,13 @@ public class ActorSystem {
     private void initializeSystemActors() throws ActorSystemCreationException {
         try {
             // 1. 创建死信Actor - 最基础的系统服务
-            this.deadLetters = createAndVerifySystemActor(
-                    DeadLetterActor.class,
-                    "/system/deadLetters",
-                    "DeadLetter Actor"
-            );
+            this.deadLetters = createAndVerifySystemActor(DeadLetterActor.class,SYSTEM_DEAD_LETTERS,"DeadLetter Actor");
 
             // 2. 创建系统守护Actor - 管理系统级Actor
-            this.systemGuardian = createAndVerifySystemActor(
-                    SystemGuardianActor.class,
-                    "/system/guardian",
-                    "System Guardian"
-            );
+            this.systemGuardian = createAndVerifySystemActor(SystemGuardianActor.class,SYSTEM_GUARDIAN,"System Guardian");
 
             // 3. 创建用户守护Actor - 管理用户级Actor
-            this.userGuardian = createAndVerifySystemActor(
-                    UserGuardianActor.class,
-                    "/user",
-                    "User Guardian"
-            );
+            this.userGuardian = createAndVerifySystemActor(UserGuardianActor.class,USER,"User Guardian");
 
             logger.info("System actors initialized successfully");
         } catch (Exception e) {
@@ -195,25 +188,13 @@ public class ActorSystem {
         }
     }
 
-    private <T> ActorRef<T> createAndVerifySystemActor(
-            Class<? extends TypedActor<T>> actorClass,
-            String path,
-            String actorName) throws ActorSystemCreationException {
-
+    private <T> ActorRef<T> createAndVerifySystemActor(Class<? extends TypedActor<T>> actorClass,String path,String actorName) throws ActorSystemCreationException {
         ActorRef<T> ref = createSystemActor(actorClass, path);
-        if (ref == null) {
-            throw new ActorSystemCreationException(
-                    String.format("Failed to create %s at path: %s", actorName, path)
-            );
-        }
-
         // 等待Actor完全初始化
         try {
             waitForActorInitialization(ref);
         } catch (Exception e) {
-            throw new ActorSystemCreationException(
-                    String.format("Failed to initialize %s", actorName), e
-            );
+            throw new ActorSystemCreationException(String.format("Failed to initialize %s", actorName), e);
         }
 
         return ref;
@@ -375,10 +356,8 @@ public class ActorSystem {
         userGuardian.tell(new UserGuardianActorMessage.CreateUserActor(props, name, future), ActorRef.noSender());
         try {
             // 等待创建完成，设置超时为1秒
-            return future.get(1, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            throw new ActorCreationException("Actor creation timeout: " + name);
-        } catch (Exception e) {
+           return future.get();
+        }  catch (Exception e) {
             throw new ActorCreationException("Failed to create actor via user guardian: " + name, e);
         }
     }
@@ -432,7 +411,7 @@ public class ActorSystem {
         CompletableFuture<Void> stopFuture = new CompletableFuture<>();
 
         Envelope signalEnvelope = Envelope.builder()
-                .message(Signal.POISON_PILL)
+                .message(Signal.STOP)
                 .type(MessageType.SIGNAL)
                 .priority(Priority.HIGH)
                 .scope(SignalScope.SINGLE)

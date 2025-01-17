@@ -5,6 +5,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.StampedLock;
+import java.util.List;
+import java.util.ArrayList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,25 +132,34 @@ public class Mailbox {
     }
 
     /**
-     * 发送消息到邮箱
-     * @param envelope 消息信封
-     * @return 是否成功入队
+     * 发送消息到邮箱 - 修复潜在的死锁问题
      */
     public boolean enqueue(Envelope envelope) {
+        // 先进行状态检查，避免在获取锁之前就可以返回
+        if (status.isClosed()) {
+            metrics.recordRejectedMessage();
+            logger.warn("Mailbox closed, message rejected: {}", envelope);
+            return false;
+        }
+
+        if (status.isSuspended()) {
+            metrics.recordRejectedMessage();
+            logger.warn("Mailbox suspended, message rejected: {}", envelope);
+            return false;
+        }
+
+        // 使用乐观读检查容量
+        long optimisticStamp = mailboxLock.tryOptimisticRead();
+        boolean isFull = messageCount.get() >= capacity;
+        if (mailboxLock.validate(optimisticStamp) && isFull) {
+            metrics.recordOverflowMessage();
+            logger.warn("Mailbox full (capacity: {}), message rejected: {}", capacity, envelope);
+            return false;
+        }
+
+        // 获取写锁
         long stamp = mailboxLock.writeLock();
         try {
-            if (status.isClosed()) {
-                metrics.recordRejectedMessage();
-                logger.warn("Mailbox closed, message rejected: {}", envelope);
-                return false;
-            }
-
-            if (messageCount.get() >= capacity) {
-                metrics.recordOverflowMessage();
-                logger.warn("Mailbox full (capacity: {}), message rejected: {}", capacity, envelope);
-                return false;
-            }
-
             boolean success = switch (envelope.getMessageType()) {
                 case SYSTEM, SIGNAL -> {
                     metrics.recordSystemMessage();
@@ -183,24 +194,24 @@ public class Mailbox {
     public Envelope dequeue() {
         long stamp = mailboxLock.readLock();
         try {
+            // 检查邮箱状态
             if (status.isSuspended()) {
                 return null;
             }
-
+            // 优先处理系统消息
             Envelope envelope = systemQueue.poll();
             if (envelope != null) {
                 messageCount.decrementAndGet();
                 metrics.recordSystemMessageProcessed();
                 return envelope;
             }
-
+            // 处理普通消息
             envelope = messageQueue.poll();
             if (envelope != null) {
                 messageCount.decrementAndGet();
                 metrics.recordNormalMessageProcessed();
                 return envelope;
             }
-
             return null;
         } finally {
             mailboxLock.unlockRead(stamp);
@@ -236,8 +247,23 @@ public class Mailbox {
      * @param newCapacity 新的队列容量
      */
     public void resizeCapacity(int newCapacity) {
+        // 先进行参数验证
+        if (newCapacity <= 0) {
+            throw new IllegalArgumentException("New capacity must be positive");
+        }
+
+        // 使用乐观读检查当前消息数量
+        long optimisticStamp = mailboxLock.tryOptimisticRead();
+        int currentCount = messageCount.get();
+        if (mailboxLock.validate(optimisticStamp) && newCapacity < currentCount) {
+            logger.warn("New capacity {} is less than current message count {}", 
+                newCapacity, currentCount);
+            return;
+        }
+
         long stamp = mailboxLock.writeLock();
         try {
+            // 再次验证容量
             if (newCapacity < messageCount.get()) {
                 logger.warn("New capacity {} is less than current message count {}", 
                     newCapacity, messageCount.get());
@@ -256,11 +282,12 @@ public class Mailbox {
     }
 
     private boolean handleEnqueueError(Envelope envelope, Exception e) {
+        // 不在锁内重试，避免死锁
         for (int i = 0; i < retryAttempts; i++) {
             try {
                 Thread.sleep(retryDelayMs);
-                boolean success = enqueue(envelope);
-                if (success) {
+                // 直接调用外部方法，而不是在锁内重试
+                if (enqueue(envelope)) {
                     logger.info("Message enqueue retry succeeded after {} attempts", i + 1);
                     return true;
                 }
@@ -307,15 +334,26 @@ public class Mailbox {
      * 将所有暂存的消息重新放入主队列
      */
     public void unstashAll() {
+        List<Envelope> stashedMessages = new ArrayList<>();
+        
+        // 首先获取所有暂存消息
         long stamp = mailboxLock.writeLock();
         try {
             Envelope envelope;
             while ((envelope = stashQueue.poll()) != null) {
-                enqueue(envelope);
-                logger.debug("Stashed message re-enqueued: {}", envelope);
+                stashedMessages.add(envelope);
             }
         } finally {
             mailboxLock.unlockWrite(stamp);
+        }
+        
+        // 在锁外重新入队
+        for (Envelope envelope : stashedMessages) {
+            if (enqueue(envelope)) {
+                logger.debug("Stashed message re-enqueued: {}", envelope);
+            } else {
+                logger.warn("Failed to re-enqueue stashed message: {}", envelope);
+            }
         }
     }
 
@@ -338,18 +376,20 @@ public class Mailbox {
     /**
      * 清空邮箱所有队列
      */
-    public void clear() {
-        long stamp = mailboxLock.writeLock();
-        try {
-            messageQueue.clear();
-            systemQueue.clear();
-            stashQueue.clear();
-            messageCount.set(0);
-            metrics.recordClear();
-            logger.debug("Mailbox cleared");
-        } finally {
-            mailboxLock.unlockWrite(stamp);
+    private void clear() {
+        // 使用乐观读检查是否需要清理
+        long optimisticStamp = mailboxLock.tryOptimisticRead();
+        boolean isEmpty = messageCount.get() == 0;
+        if (mailboxLock.validate(optimisticStamp) && isEmpty) {
+            return;
         }
+
+        messageQueue.clear();
+        systemQueue.clear();
+        stashQueue.clear();
+        messageCount.set(0);
+        metrics.recordClear();
+        logger.debug("Mailbox cleared");
     }
 
     /**

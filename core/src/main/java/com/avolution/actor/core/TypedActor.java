@@ -38,7 +38,11 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
     }
 
     /**
-     * 处理错误
+     * 调用消息处理器。
+     * 该方法会根据方法的参数数量，调用相应的处理器方法。
+     *
+     * @param error   错误
+     * @param envelope 信封
      */
     protected void handleError(Throwable error, Envelope envelope) {
         logger.error("Error processing message: {}", envelope, error);

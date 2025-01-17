@@ -73,7 +73,7 @@ public class ActorRefRegistry {
                 logger.warn("Actor already registered: {}", path);
                 return;
             }
-            
+
             // 注册Actor引用
             pathToRef.put(path, ref);
 
@@ -123,38 +123,6 @@ public class ActorRefRegistry {
         }
     }
 
-    // 3. 监视关系管理
-    public void addWatch(String watcherPath, String watchedPath) {
-        lock.writeLock().lock();
-        try {
-            // 建立作为观察者的关系
-            watcherToWatched.computeIfAbsent(watcherPath, k -> ConcurrentHashMap.newKeySet())
-                    .add(watchedPath);
-            // 建立作为被观察者的关系
-            watchedToWatcher.computeIfAbsent(watchedPath, k -> ConcurrentHashMap.newKeySet())
-                    .add(watcherPath);
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    // 移除监视关系
-    public void removeWatch(String watcherPath, String watchedPath) {
-        lock.writeLock().lock();
-        try {
-            // 移除作为观察者的关系
-            Set<String> watched = watcherToWatched.get(watcherPath);
-            if (watched != null) {
-                watched.remove(watchedPath);
-            }
-            Set<String> watchers = watchedToWatcher.get(watchedPath);
-            if (watchers != null) {
-                watchers.remove(watcherPath);
-            }
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
 
     // 4. 查询方法
     public ActorRef<?> getRef(String path) {
@@ -165,19 +133,7 @@ public class ActorRefRegistry {
             return null;
         }
     }
-    /**
-     * 获取子Actor路径集合
-     * @param parentPath
-     * @return
-     */
-    public Set<String> getChildren(String parentPath) {
-        lock.readLock().lock();
-        try {
-            return parentToChildren.getOrDefault(parentPath, Collections.emptySet());
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
+
     /**
      * 获取监视者路径集合
      * @param path 路径
@@ -202,7 +158,7 @@ public class ActorRefRegistry {
         try {
             // 批量注册Actor引用
             refs.forEach((path, ref) -> {
-                // 注册Actor引用    
+                // 注册Actor引用
                 pathToRef.put(path, ref);
                 // 建立父子关系
                 if (parentPath != null) {
@@ -265,7 +221,6 @@ public class ActorRefRegistry {
             // 1. 清理作为观察者的关系
             Set<String> watched = watcherToWatched.remove(path);
             if (watched != null) {
-                // 从被观察者的记录中移除该观察者
                 watched.forEach(watchedPath -> {
                     Set<String> watchers = watchedToWatcher.get(watchedPath);
                     if (watchers != null) {
@@ -280,7 +235,6 @@ public class ActorRefRegistry {
             // 2. 清理作为被观察者的关系
             Set<String> watchers = watchedToWatcher.remove(path);
             if (watchers != null) {
-                // 从观察者的记录中移除该被观察者
                 watchers.forEach(watcherPath -> {
                     Set<String> watchedSet = watcherToWatched.get(watcherPath);
                     if (watchedSet != null) {
@@ -291,6 +245,7 @@ public class ActorRefRegistry {
                     }
                 });
             }
+
             // 异步通知观察者
             notifyWatchersAsync(path);
         } finally {

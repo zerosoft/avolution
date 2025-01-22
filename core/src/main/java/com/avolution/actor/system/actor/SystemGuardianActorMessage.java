@@ -1,7 +1,10 @@
 package com.avolution.actor.system.actor;
 
+import com.avolution.actor.core.Props;
 import com.avolution.actor.core.UnTypedActor;
 import com.avolution.actor.core.ActorRef;
+
+import java.util.concurrent.CompletableFuture;
 
 public interface SystemGuardianActorMessage {
     class StartActorMessage implements SystemGuardianActorMessage {
@@ -44,5 +47,18 @@ public interface SystemGuardianActorMessage {
         public ActorRef<?> getActorRef() {
             return actorRef;
         }
+    }
+
+    class CreateAskActor implements SystemGuardianActorMessage {
+        public final Props props;
+        public final String name;
+        public final CompletableFuture<ActorRef> future;
+
+        public CreateAskActor(Props props, String name, CompletableFuture<ActorRef> future) {
+            this.props = props;
+            this.name = name;
+            this.future = future;
+        }
+
     }
 }

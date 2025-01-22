@@ -52,7 +52,7 @@ public class UserGuardianActor extends TypedActor<UserGuardianActorMessage> {
             childActors.put(actorName, actorRef);
 
             // 等待Actor完全初始化
-            waitForActorInitialization(actorRef);
+//            waitForActorInitialization(actorRef);
 
             // 完成Future
             message.future.complete(actorRef);

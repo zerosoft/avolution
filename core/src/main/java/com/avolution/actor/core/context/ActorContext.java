@@ -713,7 +713,7 @@ public class ActorContext implements ActorContextLifecycle,IActorContext {
             ActorFailure failure = new ActorFailure(unTypedActor.getSelfRef(),error,envelope);
 
             // 发送到监督者
-            supervisor.tell(failure, unTypedActor.getSelfRef());
+            supervisor.tell(envelope, unTypedActor.getSelfRef());
             logger.debug("Escalated error to supervisor: {} - Error: {}",supervisor.path(), error.getMessage());
         } catch (Exception e) {
             logger.error("Failed to escalate error to supervisor", e);

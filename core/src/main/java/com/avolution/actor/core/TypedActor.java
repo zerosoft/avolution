@@ -50,7 +50,8 @@ public abstract class TypedActor<T> implements ActorLifecycleHook {
         // 创建错误回复
         if (envelope.getSender() != null) {
             Envelope errorReply = envelope.createErrorReply(error);
-            getContext().tell(errorReply);
+            //策略处理
+//            getContext().tell(errorReply);
         }
 
         // 通知监督者

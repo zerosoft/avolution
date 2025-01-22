@@ -190,12 +190,12 @@ public class ActorSystem {
 
     private <T> ActorRef<T> createAndVerifySystemActor(Class<? extends TypedActor<T>> actorClass,String path,String actorName) throws ActorSystemCreationException {
         ActorRef<T> ref = createSystemActor(actorClass, path);
-        // 等待Actor完全初始化
-        try {
-            waitForActorInitialization(ref);
-        } catch (Exception e) {
-            throw new ActorSystemCreationException(String.format("Failed to initialize %s", actorName), e);
-        }
+//        // 等待Actor完全初始化
+//        try {
+//            waitForActorInitialization(ref);
+//        } catch (Exception e) {
+//            throw new ActorSystemCreationException(String.format("Failed to initialize %s", actorName), e);
+//        }
 
         return ref;
     }
@@ -329,11 +329,11 @@ public class ActorSystem {
                 throw new ActorCreationException("Failed to start actor: " + name);
             }
 
-            // 注册Actor
-            registerActor(actorRef, context);
-
-            // 将子Actor添加到父Actor的子列表中
-            parentContext.getChildren().put(name, actorRef);
+//            // 注册Actor
+//            registerActor(actorRef, context);
+//
+//            // 将子Actor添加到父Actor的子列表中
+//            parentContext.getChildren().put(name, actorRef);
 
             logger.debug("Created actor: {} with parent: {}", path, parentContext.getPath());
             return actorRef;

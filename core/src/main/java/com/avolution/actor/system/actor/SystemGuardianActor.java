@@ -1,6 +1,8 @@
 package com.avolution.actor.system.actor;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,8 @@ import com.avolution.actor.message.Signal;
 public class SystemGuardianActor extends TypedActor<SystemGuardianActorMessage> {
 
     private Logger logger= LoggerFactory.getLogger(SystemGuardianActor.class);
+
+    private final Map<String, ActorRef<?>> askActors = new ConcurrentHashMap<>();
 
     private final ActorSystem actorSystem;
 
@@ -93,6 +97,31 @@ public class SystemGuardianActor extends TypedActor<SystemGuardianActorMessage> 
 
     }
 
+    private void handleCreateUserActor(SystemGuardianActorMessage.CreateAskActor message) {
+        try {
+            String actorName = message.name;
+            Props props = message.props;
+
+            logger.debug("Creating actor '{}' under path '{}'", actorName, getContext().getPath());
+
+            // 使用当前上下文创建Actor
+            ActorRef actorRef = actorSystem.actorOf(props, actorName, getContext());
+
+            // 监视新创建的Actor
+            getContext().watch(actorRef);
+
+            // 将新创建的Actor添加到子Actor列表中
+            askActors.put(actorName, actorRef);
+
+            // 完成Future
+            message.future.complete(actorRef);
+
+            logger.debug("Successfully created actor: {} under {}", actorName, getContext().getPath());
+        } catch (Exception e) {
+            logger.error("Failed to create actor: {} under {}", message.name, getContext().getPath(), e);
+            message.future.completeExceptionally(e);
+        }
+    }
 
     @Override
     protected void onReceive(SystemGuardianActorMessage message) throws Exception {
@@ -106,6 +135,9 @@ public class SystemGuardianActor extends TypedActor<SystemGuardianActorMessage> 
                 break;
             case SystemGuardianActorMessage.RestartActorMessage restartActorMessage:
                 handleRestartActor(restartActorMessage);
+                break;
+            case SystemGuardianActorMessage.CreateAskActor createAskActor:
+                handleCreateUserActor(createAskActor);
                 break;
             default:
                 throw new AssertionError();
